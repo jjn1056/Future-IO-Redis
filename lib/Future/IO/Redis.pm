@@ -28,6 +28,25 @@ sub _parser_class {
     return $INC{'Protocol/Redis/XS.pm'} ? 'Protocol::Redis::XS' : 'Protocol::Redis';
 }
 
+sub _calculate_backoff {
+    my ($self, $attempt) = @_;
+
+    # Exponential: delay * 2^(attempt-1)
+    my $delay = $self->{reconnect_delay} * (2 ** ($attempt - 1));
+
+    # Cap at max
+    $delay = $self->{reconnect_delay_max} if $delay > $self->{reconnect_delay_max};
+
+    # Apply jitter: delay * (1 +/- jitter)
+    if ($self->{reconnect_jitter} > 0) {
+        my $jitter_range = $delay * $self->{reconnect_jitter};
+        my $jitter = (rand(2) - 1) * $jitter_range;
+        $delay += $jitter;
+    }
+
+    return $delay;
+}
+
 sub new {
     my ($class, %args) = @_;
 
@@ -49,6 +68,20 @@ sub new {
 
         # Inflight tracking with deadlines
         inflight => [],
+
+        # Reconnection settings
+        reconnect           => $args{reconnect} // 0,
+        reconnect_delay     => $args{reconnect_delay} // 0.1,
+        reconnect_delay_max => $args{reconnect_delay_max} // 60,
+        reconnect_jitter    => $args{reconnect_jitter} // 0.25,
+        queue_size          => $args{queue_size} // 1000,
+        _reconnect_attempt  => 0,
+        _command_queue      => [],
+
+        # Callbacks
+        on_connect    => $args{on_connect},
+        on_disconnect => $args{on_disconnect},
+        on_error      => $args{on_error},
     }, $class;
 
     return $self;
@@ -118,12 +151,21 @@ async sub connect {
     $self->{connected} = 1;
     $self->{inflight} = [];
 
+    # Fire on_connect callback and reset reconnect counter
+    if ($self->{on_connect}) {
+        $self->{on_connect}->($self);
+    }
+    $self->{_reconnect_attempt} = 0;
+
     return $self;
 }
 
 # Disconnect from Redis
 sub disconnect {
-    my ($self) = @_;
+    my ($self, $reason) = @_;
+    $reason //= 'client_disconnect';
+
+    my $was_connected = $self->{connected};
 
     if ($self->{socket}) {
         close $self->{socket};
@@ -131,6 +173,10 @@ sub disconnect {
     }
     $self->{connected} = 0;
     $self->{parser} = undef;
+
+    if ($was_connected && $self->{on_disconnect}) {
+        $self->{on_disconnect}->($self, $reason);
+    }
 
     return $self;
 }
@@ -210,9 +256,40 @@ sub _calculate_deadline {
     return time() + $self->{request_timeout};
 }
 
+# Reconnect with exponential backoff
+async sub _reconnect {
+    my ($self) = @_;
+
+    while (!$self->{connected}) {
+        $self->{_reconnect_attempt}++;
+        my $delay = $self->_calculate_backoff($self->{_reconnect_attempt});
+
+        eval {
+            await $self->connect;
+        };
+
+        if ($@) {
+            my $error = $@;
+
+            # Fire on_error callback
+            if ($self->{on_error}) {
+                $self->{on_error}->($self, $error);
+            }
+
+            # Wait before next attempt
+            await Future::IO->sleep($delay);
+        }
+    }
+}
+
 # Execute a Redis command
 async sub command {
     my ($self, @args) = @_;
+
+    # If disconnected and reconnect enabled, try to reconnect
+    if (!$self->{connected} && $self->{reconnect}) {
+        await $self->_reconnect;
+    }
 
     die Future::IO::Redis::Error::Disconnected->new(
         message => "Not connected",
@@ -301,7 +378,10 @@ async sub _read_response_with_deadline {
 
 # Reset connection after timeout (stream is desynced)
 sub _reset_connection {
-    my ($self) = @_;
+    my ($self, $reason) = @_;
+    $reason //= 'timeout';
+
+    my $was_connected = $self->{connected};
 
     if ($self->{socket}) {
         close $self->{socket};
@@ -311,6 +391,10 @@ sub _reset_connection {
     $self->{connected} = 0;
     $self->{parser} = undef;
     $self->{inflight} = [];
+
+    if ($was_connected && $self->{on_disconnect}) {
+        $self->{on_disconnect}->($self, $reason);
+    }
 }
 
 # Decode Protocol::Redis response to Perl value
