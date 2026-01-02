@@ -955,6 +955,10 @@ my $pool = Future::IO::Redis::Pool->new(
     acquire_timeout => 5,   # max wait for connection (seconds)
     idle_timeout    => 60,  # close idle connections after 60s
 
+    # Dirty connection handling
+    on_dirty => 'destroy',  # 'destroy' (default) or 'cleanup'
+    cleanup_timeout => 5,   # max time to clean dirty connection
+
     # Pass through to connections
     password => 'secret',
     database => 1,
@@ -965,16 +969,17 @@ my $pool = Future::IO::Redis::Pool->new(
 ### Usage Patterns
 
 ```perl
-# Acquire/release pattern
+# Acquire/release pattern (DANGEROUS - see below)
 my $redis = await $pool->acquire;
 await $redis->set('foo', 'bar');
 $pool->release($redis);
 
-# Scoped pattern (auto-release, safer)
+# Scoped pattern (RECOMMENDED - guarantees cleanup)
 my $result = await $pool->with(async sub {
     my ($redis) = @_;
     await $redis->incr('counter');
 });
+# Connection automatically released, even on exception
 ```
 
 ### Pool Statistics
@@ -983,21 +988,301 @@ my $result = await $pool->with(async sub {
 my $stats = $pool->stats;
 # Returns:
 # {
-#     active  => 3,    # currently in use
-#     idle    => 2,    # available in pool
-#     waiting => 0,    # requests waiting for connection
-#     total   => 5,    # active + idle
+#     active    => 3,    # currently in use
+#     idle      => 2,    # available in pool
+#     waiting   => 0,    # requests waiting for connection
+#     total     => 5,    # active + idle
+#     destroyed => 12,   # connections destroyed due to dirty state
 # }
 ```
 
-### Behavior
+### Connection Cleanliness (Critical)
+
+A connection is **dirty** if any of these are true:
+
+| State | How It Happens | Why It's Dangerous |
+|-------|----------------|-------------------|
+| `in_multi` | User started MULTI, didn't EXEC/DISCARD | Next user's commands queued in abandoned transaction |
+| `watching` | User called WATCH, didn't UNWATCH/EXEC | Next transaction may fail unexpectedly |
+| `in_pubsub` | User subscribed, didn't fully unsubscribe | Connection in modal state, commands fail |
+| `inflight > 0` | Pending futures exist | Responses may arrive for wrong user |
+
+#### Connection State Tracking
+
+```perl
+# Each connection tracks its state
+package Future::IO::Redis::Connection;
+
+sub is_dirty {
+    my ($self) = @_;
+    return 1 if $self->{in_multi};
+    return 1 if $self->{watching};
+    return 1 if $self->{in_pubsub};
+    return 1 if @{$self->{inflight}} > 0;
+    return 0;
+}
+
+# State updated by commands
+sub multi {
+    my ($self) = @_;
+    $self->{in_multi} = 1;
+    return $self->command('MULTI');
+}
+
+sub exec {
+    my ($self) = @_;
+    my $f = $self->command('EXEC');
+    $f->on_ready(sub { $self->{in_multi} = 0 });
+    return $f;
+}
+
+sub discard {
+    my ($self) = @_;
+    my $f = $self->command('DISCARD');
+    $f->on_ready(sub { $self->{in_multi} = 0 });
+    return $f;
+}
+
+sub watch {
+    my ($self, @keys) = @_;
+    $self->{watching} = 1;
+    return $self->command('WATCH', @keys);
+}
+
+sub unwatch {
+    my ($self) = @_;
+    my $f = $self->command('UNWATCH');
+    $f->on_ready(sub { $self->{watching} = 0 });
+    return $f;
+}
+
+sub subscribe {
+    my ($self, @channels) = @_;
+    $self->{in_pubsub} = 1;
+    # ... subscription logic
+}
+```
+
+#### Release Validation
+
+```perl
+sub release {
+    my ($self, $conn) = @_;
+
+    # Check if connection is clean
+    if ($conn->is_dirty) {
+        $self->{stats}{destroyed}++;
+
+        if ($self->{on_dirty} eq 'cleanup') {
+            # Attempt cleanup (risky but configurable)
+            $self->_cleanup_connection($conn)
+                ->timeout($self->{cleanup_timeout})
+                ->on_done(sub { $self->_return_to_pool($conn) })
+                ->on_fail(sub { $conn->destroy; $self->_maybe_create });
+        } else {
+            # Default: destroy and replace (safe)
+            $conn->destroy;
+            $self->_maybe_create_replacement;
+        }
+        return;
+    }
+
+    # Clean connection - return to pool
+    $self->_return_to_pool($conn);
+}
+```
+
+#### Cleanup Sequence (Optional, Non-Default)
+
+If `on_dirty => 'cleanup'` is configured:
+
+```perl
+async sub _cleanup_connection {
+    my ($self, $conn) = @_;
+
+    # 1. Wait for inflight to drain (with timeout)
+    if (@{$conn->{inflight}} > 0) {
+        await $self->_drain_inflight($conn, timeout => 2);
+    }
+
+    # 2. Reset transaction state
+    if ($conn->{in_multi}) {
+        await $conn->command('DISCARD');
+        $conn->{in_multi} = 0;
+    }
+
+    if ($conn->{watching}) {
+        await $conn->command('UNWATCH');
+        $conn->{watching} = 0;
+    }
+
+    # 3. Exit pubsub mode (must unsubscribe from all)
+    if ($conn->{in_pubsub}) {
+        await $conn->command('UNSUBSCRIBE');
+        await $conn->command('PUNSUBSCRIBE');
+        # May need to drain subscription confirmations
+        $conn->{in_pubsub} = 0;
+    }
+
+    return $conn;
+}
+```
+
+#### Why Destroy Is The Safe Default
+
+| Cleanup Approach | Risk |
+|------------------|------|
+| DISCARD | Might fail if not actually in MULTI |
+| UNWATCH | Safe but extra round-trip |
+| UNSUBSCRIBE | Returns confirmations that must be drained |
+| Drain inflight | Timeout if responses never arrive |
+| **Destroy** | **Zero risk - fresh connection guaranteed clean** |
+
+The cost of destroying is one TCP handshake + AUTH + SELECT. This is negligible compared to the risk of data corruption from a dirty connection.
+
+### Health Check Nuances
+
+The simple "PING before returning" has edge cases:
+
+```perl
+sub _health_check {
+    my ($self, $conn) = @_;
+
+    # Can't PING a pubsub connection (well, we can, but response differs)
+    if ($conn->{in_pubsub}) {
+        # Pubsub connections should never be in pool anyway
+        $conn->destroy;
+        return Future->fail("PubSub connection in pool");
+    }
+
+    # PING with short timeout
+    return $conn->command('PING')
+        ->timeout(1)
+        ->then(sub {
+            my ($pong) = @_;
+            return Future->done($conn) if $pong eq 'PONG';
+            return Future->fail("Unexpected PING response: $pong");
+        });
+}
+```
+
+### The `with()` Pattern (Recommended)
+
+The scoped pattern handles all edge cases:
+
+```perl
+async sub with {
+    my ($self, $code) = @_;
+
+    my $conn = await $self->acquire;
+    my $result;
+    my $error;
+
+    try {
+        $result = await $code->($conn);
+    } catch ($e) {
+        $error = $e;
+    }
+
+    # Always release, even on exception
+    # release() handles dirty detection
+    $self->release($conn);
+
+    die $error if $error;
+    return $result;
+}
+
+# Usage - guaranteed safe
+await $pool->with(async sub {
+    my ($redis) = @_;
+
+    await $redis->watch('balance');
+    await $redis->multi;
+    await $redis->decrby('balance', 100);
+    await $redis->exec;
+    # If exception here, connection destroyed (dirty: in_multi)
+    # If success, connection clean and returned to pool
+});
+```
+
+### PubSub and Pools: Don't Mix
+
+**PubSub connections should NOT come from a pool.** They are:
+- Long-lived (subscription duration)
+- Modal (can't do regular commands)
+- Stateful (have active subscriptions)
+
+```perl
+# WRONG: Don't use pool for pubsub
+my $redis = await $pool->acquire;
+await $redis->subscribe('channel');  # Now connection is dirty forever
+# ...
+$pool->release($redis);  # Will be destroyed
+
+# RIGHT: Dedicated connection for pubsub
+my $subscriber = Future::IO::Redis->new(host => 'localhost');
+await $subscriber->connect;
+my $sub = await $subscriber->subscribe('channel');
+# Keep $subscriber alive for duration of subscription
+```
+
+### Transactions and Pools
+
+Transactions are fine with pools **if completed properly**:
+
+```perl
+# CORRECT: Transaction completes
+await $pool->with(async sub {
+    my ($redis) = @_;
+    await $redis->multi;
+    await $redis->incr('a');
+    await $redis->incr('b');
+    await $redis->exec;  # Clears in_multi flag
+});
+
+# DANGEROUS: Exception mid-transaction
+await $pool->with(async sub {
+    my ($redis) = @_;
+    await $redis->multi;
+    await $redis->incr('a');
+    die "oops";  # Connection dirty: in_multi=1
+    # with() releases dirty connection → destroyed
+});
+```
+
+### Pipeline and Pools: Timing Matters
+
+```perl
+# WRONG: Release while pipeline inflight
+my $redis = await $pool->acquire;
+my $future = $redis->pipeline->set('a', 1)->execute;
+$pool->release($redis);  # Released with inflight futures!
+await $future;           # Response may be read by different user
+
+# CORRECT: Wait for pipeline to complete
+my $redis = await $pool->acquire;
+my $results = await $redis->pipeline->set('a', 1)->execute;
+$pool->release($redis);  # Safe: no inflight futures
+
+# BEST: Use with() pattern
+await $pool->with(async sub {
+    my ($redis) = @_;
+    return await $redis->pipeline->set('a', 1)->execute;
+});
+```
+
+### Behavior Summary
 
 - Connections created on demand up to `max`
 - Idle connections beyond `min` closed after `idle_timeout`
 - Health check (PING) before returning connection from pool
+- **Dirty connections destroyed by default** (safest)
+- Optional cleanup mode for high-connection-cost environments
 - Dead connections removed automatically
 - `acquire_timeout` prevents indefinite blocking under load
 - Connections inherit all settings (auth, tls, database)
+- **PubSub connections should not use pools**
+- **Use `with()` pattern for guaranteed cleanup**
 
 ---
 
@@ -1600,15 +1885,37 @@ ok($ticks > 10, 'Event loop not blocked during 1000 auto-pipelined commands');
 7. Commit
 
 #### Step 17: Connection Pool
-**Goal:** Pool management
+**Goal:** Pool management with connection cleanliness tracking
 
 1. Run all tests
 2. Create `t/90-pool/*.t`
-3. Implement `Pool.pm`
-4. Run pool tests
-5. Run all tests
-6. Run non-blocking proof
-7. Commit
+3. Implement connection state tracking (`in_multi`, `watching`, `in_pubsub`, `inflight`)
+4. Implement `is_dirty()` check
+5. Implement `Pool.pm` with:
+   - acquire/release
+   - `with()` scoped pattern
+   - Health check (PING) on acquire
+   - Dirty detection on release
+   - `on_dirty => 'destroy'` (default)
+   - `on_dirty => 'cleanup'` (optional)
+6. Run pool tests
+7. Run all tests
+8. Run non-blocking proof
+9. Commit
+
+**Tests to write:**
+- Basic acquire/release
+- `with()` pattern works
+- `with()` releases even on exception
+- Dirty connection (abandoned MULTI) detected and destroyed
+- Dirty connection (WATCH without EXEC) detected
+- Dirty connection (in pubsub) detected
+- Dirty connection (inflight futures) detected
+- Cleanup mode resets connection properly
+- Destroy mode creates replacement connection
+- Stats track destroyed connections
+- Health check fails on pubsub connection
+- PubSub from pool gets destroyed on release
 
 #### Step 18: Observability
 **Goal:** OpenTelemetry, metrics, debug logging
@@ -1819,7 +2126,14 @@ t/
 │   ├── idle.t                # Idle timeout
 │   ├── health.t              # Health check on acquire
 │   ├── concurrent.t          # Concurrent access
-│   └── exhaustion.t          # Pool exhaustion, acquire_timeout
+│   ├── exhaustion.t          # Pool exhaustion, acquire_timeout
+│   ├── dirty-multi.t         # Dirty detection: abandoned MULTI
+│   ├── dirty-watch.t         # Dirty detection: abandoned WATCH
+│   ├── dirty-pubsub.t        # Dirty detection: pubsub mode
+│   ├── dirty-inflight.t      # Dirty detection: pending futures
+│   ├── cleanup-mode.t        # on_dirty => 'cleanup' behavior
+│   ├── destroy-mode.t        # on_dirty => 'destroy' behavior (default)
+│   └── with-exception.t      # with() handles exceptions correctly
 ├── 91-reliability/           # Reliability tests
 │   ├── redis-restart.t       # Survive Redis restart
 │   ├── network-partition.t   # Connection drops mid-command
