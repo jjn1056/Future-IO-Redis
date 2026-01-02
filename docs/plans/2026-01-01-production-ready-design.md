@@ -792,6 +792,520 @@ share/
 
 ---
 
+## Implementation Methodology
+
+### Core Principle: Prove Non-Blocking at Every Step
+
+This is a **non-blocking Redis client**. Every feature must prove it doesn't block the event loop. This is not optional - it's the entire point of the library.
+
+### The Non-Blocking Test
+
+Every feature implementation MUST include this verification:
+
+```perl
+# t/00-nonblocking-proof.t - Run after EVERY change
+
+use Test2::V0;
+use IO::Async::Loop;
+use IO::Async::Timer::Periodic;
+use Future::IO::Impl::IOAsync;
+use Future::IO::Redis;
+
+my $loop = IO::Async::Loop->new;
+my @ticks;
+
+# Timer that ticks every 10ms
+my $timer = IO::Async::Timer::Periodic->new(
+    interval => 0.01,
+    on_tick => sub { push @ticks, Time::HiRes::time() },
+);
+$loop->add($timer);
+$timer->start;
+
+# Run Redis operations for 500ms
+my $redis = Future::IO::Redis->new(host => 'localhost');
+my $start = Time::HiRes::time();
+
+my $test = async sub {
+    await $redis->connect;
+
+    # Mix of operations
+    for my $i (1..50) {
+        await $redis->set("nb:$i", "value$i");
+        await $redis->get("nb:$i");
+    }
+
+    # Pipeline
+    my $pipe = $redis->pipeline;
+    $pipe->set("nb:pipe:$_", $_) for 1..100;
+    await $pipe->execute;
+
+    await $redis->del(map { "nb:$_" } 1..50);
+    await $redis->del(map { "nb:pipe:$_" } 1..100);
+};
+
+$loop->await($test->());
+
+$timer->stop;
+my $elapsed = Time::HiRes::time() - $start;
+
+# CRITICAL: Timer must have ticked regularly throughout
+# If Redis ops blocked, timer wouldn't tick
+my $expected_ticks = int($elapsed / 0.01);
+my $actual_ticks = scalar @ticks;
+my $tick_ratio = $actual_ticks / $expected_ticks;
+
+ok($tick_ratio > 0.8,
+    "Event loop ticked $actual_ticks times (expected ~$expected_ticks, ratio $tick_ratio)");
+
+# Verify ticks were evenly distributed (not bunched at start/end)
+if (@ticks >= 10) {
+    my $first_half = grep { $_ < $start + $elapsed/2 } @ticks;
+    my $second_half = @ticks - $first_half;
+    my $balance = $first_half / @ticks;
+    ok($balance > 0.3 && $balance < 0.7,
+        "Ticks evenly distributed (first half: $first_half, second: $second_half)");
+}
+
+done_testing;
+```
+
+**If this test fails, the implementation is broken. Stop and fix before continuing.**
+
+### Iterative Development Process
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  For each feature:                                               │
+│                                                                  │
+│  1. RUN ALL TESTS (establish baseline)                          │
+│     └── If failures exist, STOP and fix first                   │
+│                                                                  │
+│  2. Write tests for the feature                                  │
+│     └── Include non-blocking verification                        │
+│                                                                  │
+│  3. Implement the feature                                        │
+│                                                                  │
+│  4. Run feature tests                                            │
+│     └── If failures, fix and repeat step 4                       │
+│                                                                  │
+│  5. RUN ALL TESTS (catch regressions)                           │
+│     └── If regressions, STOP and fix before continuing          │
+│                                                                  │
+│  6. Run non-blocking proof test                                  │
+│     └── If fails, implementation is wrong - fix before moving on│
+│                                                                  │
+│  7. Commit with passing tests                                    │
+│                                                                  │
+│  8. Move to next feature                                         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Step-by-Step Implementation Plan
+
+Each step follows the process above. Steps are ordered to build on previous work.
+
+#### Step 0: Establish Baseline
+```bash
+# Verify existing sketch works
+prove -l t/
+# All 3 tests must pass: 01-basic.t, 02-nonblocking.t, 03-pubsub.t
+```
+
+#### Step 1: Error Classes
+**Goal:** Typed exceptions for all error conditions
+
+1. Run all tests (baseline)
+2. Create `t/01-unit/error.t`
+3. Implement `lib/Future/IO/Redis/Error.pm` and subclasses
+4. Run `prove -l t/01-unit/error.t`
+5. Run all tests (regression check)
+6. Run non-blocking proof
+7. Commit
+
+**Tests to write:**
+- Error class hierarchy
+- Stringification
+- `isa()` checks for each type
+
+#### Step 2: URI Parsing
+**Goal:** Support connection URIs
+
+1. Run all tests
+2. Create `t/01-unit/uri.t`
+3. Implement `lib/Future/IO/Redis/URI.pm`
+4. Run `prove -l t/01-unit/uri.t`
+5. Run all tests
+6. Run non-blocking proof
+7. Commit
+
+**Tests to write:**
+- `redis://localhost`
+- `redis://localhost:6380`
+- `redis://:password@localhost`
+- `redis://user:pass@localhost/2`
+- `rediss://localhost` (TLS)
+- `redis+unix:///var/run/redis.sock`
+- Invalid URIs throw
+
+#### Step 3: Timeouts
+**Goal:** Connect, read, write timeouts
+
+1. Run all tests
+2. Create `t/10-connection/timeout.t`
+3. Add timeout parameters to constructor
+4. Wrap `Future::IO` calls with `->timeout()`
+5. Run timeout tests
+6. Run all tests
+7. Run non-blocking proof (CRITICAL - timeouts must not block)
+8. Commit
+
+**Tests to write:**
+- Connect timeout fires
+- Read timeout fires
+- Write timeout fires
+- Timeout throws `Error::Timeout`
+- Normal operations still work within timeout
+
+**Non-blocking verification:**
+```perl
+# Timeout must not block event loop
+my $timer_ticked = 0;
+$loop->add(IO::Async::Timer::Countdown->new(
+    delay => 0.1,
+    on_expire => sub { $timer_ticked = 1 },
+)->start);
+
+# This should timeout after 0.5s, but timer should tick at 0.1s
+my $redis = Future::IO::Redis->new(
+    host => '10.255.255.1',  # non-routable, will timeout
+    connect_timeout => 0.5,
+);
+eval { await $redis->connect };
+
+ok($timer_ticked, 'Event loop not blocked during connect timeout');
+```
+
+#### Step 4: Reconnection
+**Goal:** Auto-reconnect with exponential backoff
+
+1. Run all tests
+2. Create `t/10-connection/reconnect.t`
+3. Implement reconnection logic
+4. Run reconnect tests
+5. Run all tests
+6. Run non-blocking proof (reconnection must not block)
+7. Commit
+
+**Tests to write:**
+- Reconnect after disconnect
+- Exponential backoff timing
+- Jitter applied
+- Max delay respected
+- `on_disconnect` callback fires
+- `on_connect` callback fires on reconnect
+- Commands queued during reconnect
+- Queued commands execute after reconnect
+
+**Non-blocking verification:**
+```perl
+# Reconnection attempts must not block
+await $redis->connect;
+
+# Kill connection
+$redis->{socket}->close;
+
+# Timer should keep ticking during reconnect attempts
+my $ticks = 0;
+my $timer = ...; # 10ms timer
+
+# This should reconnect without blocking
+await $redis->set('key', 'value');
+
+ok($ticks > 5, 'Event loop not blocked during reconnection');
+```
+
+#### Step 5: Authentication
+**Goal:** AUTH and SELECT on connect
+
+1. Run all tests
+2. Create `t/10-connection/auth.t`
+3. Implement AUTH/SELECT in connect sequence
+4. Run auth tests (requires redis-auth Docker container)
+5. Run all tests
+6. Run non-blocking proof
+7. Commit
+
+**Tests to write:**
+- Password authentication works
+- Username + password (ACL) works
+- Wrong password throws `Error::Redis`
+- SELECT database works
+- Auth replayed on reconnect
+
+#### Step 6: TLS
+**Goal:** TLS/SSL connections
+
+1. Run all tests
+2. Create `t/10-connection/tls.t`
+3. Implement TLS upgrade using IO::Socket::SSL
+4. Run TLS tests (requires redis-tls Docker container)
+5. Run all tests
+6. Run non-blocking proof (TLS handshake must not block)
+7. Commit
+
+**Tests to write:**
+- `tls => 1` enables TLS
+- Custom CA/cert/key works
+- Certificate verification works
+- Invalid cert throws `Error::Connection`
+
+#### Step 7: Command Generation
+**Goal:** Auto-generate all Redis commands
+
+1. Run all tests
+2. Create `bin/generate-commands`
+3. Fetch commands.json from redis-doc
+4. Generate `lib/Future/IO/Redis/Commands.pm`
+5. Create `t/01-unit/commands-generated.t`
+6. Run command generation tests
+7. Run all tests
+8. Run non-blocking proof
+9. Commit
+
+**Tests to write:**
+- All expected methods exist
+- Methods call `->command()` correctly
+- snake_case naming correct
+- Subcommands work (`client_setname`, etc.)
+
+#### Step 8: Command Tests
+**Goal:** Test all command categories
+
+For each category, follow the full process:
+
+1. `t/20-commands/strings.t` - GET, SET, INCR, etc.
+2. `t/20-commands/hashes.t` - HSET, HGET, HGETALL, etc.
+3. `t/20-commands/lists.t` - LPUSH, RPOP, LRANGE, etc.
+4. `t/20-commands/sets.t` - SADD, SMEMBERS, SINTER, etc.
+5. `t/20-commands/sorted-sets.t` - ZADD, ZRANGE, ZRANK, etc.
+6. `t/20-commands/keys.t` - DEL, EXISTS, EXPIRE, TTL, etc.
+
+Each file must include non-blocking verification.
+
+#### Step 9: Key Prefixing
+**Goal:** Automatic namespace prefixing
+
+1. Run all tests
+2. Create `t/20-commands/prefix.t`
+3. Implement prefix logic in `command()` method
+4. Run prefix tests
+5. Run all tests
+6. Run non-blocking proof
+7. Commit
+
+**Tests to write:**
+- Prefix applied to single-key commands
+- Prefix applied to multi-key commands
+- Prefix applied in SCAN results
+- Prefix NOT applied to non-key args
+
+#### Step 10: Transactions
+**Goal:** MULTI/EXEC/WATCH support
+
+1. Run all tests
+2. Create `t/40-transactions/*.t`
+3. Implement `Transaction.pm`
+4. Run transaction tests
+5. Run all tests
+6. Run non-blocking proof
+7. Commit
+
+**Tests to write:**
+- Basic MULTI/EXEC
+- WATCH detects changes
+- WATCH conflict returns undef
+- DISCARD works
+- Nested transaction errors
+
+#### Step 11: Lua Scripting
+**Goal:** EVAL/EVALSHA support
+
+1. Run all tests
+2. Create `t/60-scripting/*.t`
+3. Implement `Script.pm`
+4. Run scripting tests
+5. Run all tests
+6. Run non-blocking proof
+7. Commit
+
+#### Step 12: Blocking Commands
+**Goal:** BLPOP/BRPOP with proper timeout handling
+
+1. Run all tests
+2. Create `t/70-blocking/*.t`
+3. Implement blocking command timeout logic
+4. Run blocking tests
+5. Run all tests
+6. Run non-blocking proof (CRITICAL - blocking commands must not block event loop!)
+7. Commit
+
+**Non-blocking verification:**
+```perl
+# BLPOP with 5s timeout must not block event loop
+my $ticks = 0;
+my $timer = ...; # 10ms timer
+
+# BLPOP on empty list with 1s timeout
+my $result = await $redis->blpop('empty:list', 1);
+
+ok($ticks > 50, 'Event loop ticked during BLPOP wait');
+is($result, undef, 'BLPOP returned undef on timeout');
+```
+
+#### Step 13: SCAN Iterators
+**Goal:** Cursor-based iteration
+
+1. Run all tests
+2. Create `t/80-scan/*.t`
+3. Implement `Iterator.pm`
+4. Run SCAN tests
+5. Run all tests
+6. Run non-blocking proof
+7. Commit
+
+#### Step 14: Pipelining Refinement
+**Goal:** Error handling, depth limits
+
+1. Run all tests
+2. Create `t/30-pipeline/*.t`
+3. Refine existing Pipeline implementation
+4. Run pipeline tests
+5. Run all tests
+6. Run non-blocking proof
+7. Commit
+
+#### Step 15: Auto-Pipelining
+**Goal:** Automatic batching
+
+1. Run all tests
+2. Create `t/30-pipeline/auto-pipeline.t`
+3. Implement `AutoPipeline.pm`
+4. Run auto-pipeline tests
+5. Run all tests
+6. Run non-blocking proof
+7. Commit
+
+**Non-blocking verification:**
+```perl
+# 1000 commands should batch automatically
+my $ticks = 0;
+my @futures = map { $redis->set("ap:$_", $_) } (1..1000);
+await Future->all(@futures);
+
+ok($ticks > 10, 'Event loop not blocked during 1000 auto-pipelined commands');
+```
+
+#### Step 16: PubSub Refinement
+**Goal:** Sharded pubsub, reconnect replay
+
+1. Run all tests
+2. Create/update `t/50-pubsub/*.t`
+3. Implement sharded pubsub, reconnect replay
+4. Run pubsub tests
+5. Run all tests
+6. Run non-blocking proof
+7. Commit
+
+#### Step 17: Connection Pool
+**Goal:** Pool management
+
+1. Run all tests
+2. Create `t/90-pool/*.t`
+3. Implement `Pool.pm`
+4. Run pool tests
+5. Run all tests
+6. Run non-blocking proof
+7. Commit
+
+#### Step 18: Observability
+**Goal:** OpenTelemetry, metrics, debug logging
+
+1. Run all tests
+2. Create `t/94-observability/*.t`
+3. Implement `Telemetry.pm`
+4. Run observability tests
+5. Run all tests
+6. Run non-blocking proof
+7. Commit
+
+#### Step 19: Fork Safety
+**Goal:** PID tracking for prefork servers
+
+1. Run all tests
+2. Create `t/10-connection/fork-safety.t`
+3. Implement PID detection in connection
+4. Run fork tests
+5. Run all tests
+6. Run non-blocking proof
+7. Commit
+
+#### Step 20: Reliability Testing
+**Goal:** Redis restart, network partition, stress tests
+
+1. Run all tests
+2. Create `t/91-reliability/*.t`
+3. Run reliability tests with Docker
+4. Run all tests
+5. Run non-blocking proof under stress
+6. Commit
+
+#### Step 21: Integration Testing
+**Goal:** Full integration, performance benchmarks
+
+1. Run all tests
+2. Create `t/99-integration/*.t`
+3. Run integration tests
+4. Performance benchmark vs Net::Async::Redis
+5. 1-hour long-running test
+6. Commit
+
+#### Step 22: Documentation & Release
+**Goal:** POD, README, CPAN release
+
+1. Run all tests
+2. Write comprehensive POD
+3. Update README
+4. Run all tests one final time
+5. Run non-blocking proof one final time
+6. Tag release
+7. Upload to CPAN
+
+### Regression Policy
+
+**If any test fails after a change:**
+
+1. **STOP** - Do not proceed to next step
+2. **Identify** - Which test failed? Is it new or existing?
+3. **If existing test failed** - This is a regression. Fix before continuing.
+4. **If new test failed** - Fix the implementation
+5. **Run ALL tests** - Ensure fix didn't break anything else
+6. **Run non-blocking proof** - Ensure fix didn't introduce blocking
+7. **Only then continue** to next step
+
+### Continuous Non-Blocking Verification
+
+The non-blocking proof test (`t/00-nonblocking-proof.t`) must be run:
+
+- After every step completion
+- Before every commit
+- As part of CI pipeline
+- Any time you're unsure
+
+**This test is the ultimate arbiter.** If the event loop isn't ticking during Redis operations, the implementation is wrong, regardless of whether other tests pass.
+
+---
+
 ## Implementation Phases
 
 ### Phase 1: Core Reliability
