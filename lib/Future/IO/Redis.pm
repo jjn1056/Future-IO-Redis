@@ -168,6 +168,17 @@ async sub connect {
         );
     }
 
+    # TLS upgrade if enabled
+    if ($self->{tls}) {
+        eval {
+            $socket = await $self->_tls_upgrade($socket);
+        };
+        if ($@) {
+            close $socket;
+            die $@;
+        }
+    }
+
     $self->{socket} = $socket;
     $self->{parser} = _parser_class()->new(api => 1);
     $self->{connected} = 1;
@@ -330,6 +341,110 @@ sub _calculate_deadline {
 
     # Normal commands use request_timeout
     return time() + $self->{request_timeout};
+}
+
+# Non-blocking TLS upgrade
+async sub _tls_upgrade {
+    my ($self, $socket) = @_;
+
+    require IO::Socket::SSL;
+
+    # Build SSL options
+    my %ssl_opts = (
+        SSL_startHandshake => 0,  # Don't block during start_SSL!
+    );
+
+    if (ref $self->{tls} eq 'HASH') {
+        $ssl_opts{SSL_ca_file}    = $self->{tls}{ca_file} if $self->{tls}{ca_file};
+        $ssl_opts{SSL_cert_file}  = $self->{tls}{cert_file} if $self->{tls}{cert_file};
+        $ssl_opts{SSL_key_file}   = $self->{tls}{key_file} if $self->{tls}{key_file};
+
+        if (exists $self->{tls}{verify}) {
+            $ssl_opts{SSL_verify_mode} = $self->{tls}{verify}
+                ? IO::Socket::SSL::SSL_VERIFY_PEER()
+                : IO::Socket::SSL::SSL_VERIFY_NONE();
+        } else {
+            $ssl_opts{SSL_verify_mode} = IO::Socket::SSL::SSL_VERIFY_PEER();
+        }
+    } else {
+        $ssl_opts{SSL_verify_mode} = IO::Socket::SSL::SSL_VERIFY_PEER();
+    }
+
+    # Start SSL (does not block because SSL_startHandshake => 0)
+    IO::Socket::SSL->start_SSL($socket, %ssl_opts)
+        or die Future::IO::Redis::Error::Connection->new(
+            message => "SSL setup failed: " . IO::Socket::SSL::errstr(),
+            host    => $self->{host},
+            port    => $self->{port},
+        );
+
+    # Drive handshake with non-blocking loop
+    my $deadline = time() + $self->{connect_timeout};
+
+    while (1) {
+        # Check timeout
+        if (time() >= $deadline) {
+            die Future::IO::Redis::Error::Timeout->new(
+                message => "TLS handshake timed out",
+                timeout => $self->{connect_timeout},
+            );
+        }
+
+        # Attempt handshake step
+        my $rv = $socket->connect_SSL;
+
+        if ($rv) {
+            # Handshake complete!
+            return $socket;
+        }
+
+        # Check what the handshake needs
+        my $remaining = $deadline - time();
+        $remaining = 0.1 if $remaining <= 0;
+
+        if ($IO::Socket::SSL::SSL_ERROR == IO::Socket::SSL::SSL_ERROR_WANT_READ()) {
+            # Wait for socket to become readable with timeout
+            my $read_f = Future::IO->waitfor_readable($socket);
+            my $timeout_f = Future::IO->sleep($remaining)->then(sub {
+                return Future->fail('tls_timeout');
+            });
+
+            my $wait_f = Future->wait_any($read_f, $timeout_f);
+            await $wait_f;
+
+            if ($wait_f->is_failed) {
+                die Future::IO::Redis::Error::Timeout->new(
+                    message => "TLS handshake timed out",
+                    timeout => $self->{connect_timeout},
+                );
+            }
+        }
+        elsif ($IO::Socket::SSL::SSL_ERROR == IO::Socket::SSL::SSL_ERROR_WANT_WRITE()) {
+            # Wait for socket to become writable with timeout
+            my $write_f = Future::IO->waitfor_writable($socket);
+            my $timeout_f = Future::IO->sleep($remaining)->then(sub {
+                return Future->fail('tls_timeout');
+            });
+
+            my $wait_f = Future->wait_any($write_f, $timeout_f);
+            await $wait_f;
+
+            if ($wait_f->is_failed) {
+                die Future::IO::Redis::Error::Timeout->new(
+                    message => "TLS handshake timed out",
+                    timeout => $self->{connect_timeout},
+                );
+            }
+        }
+        else {
+            # Actual error
+            die Future::IO::Redis::Error::Connection->new(
+                message => "TLS handshake failed: " . IO::Socket::SSL::errstr(),
+                host    => $self->{host},
+                port    => $self->{port},
+            );
+        }
+    }
 }
 
 # Reconnect with exponential backoff

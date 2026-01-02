@@ -157,6 +157,27 @@ my $result_f = Future->wait_any($operation_f, $timeout_f);
 my $result = await $operation_f->timeout($seconds);
 ```
 
+### waitfor_readable/waitfor_writable Need Timeout Composition
+
+**Problem:** `Future::IO->waitfor_readable()` and `waitfor_writable()` have no timeout parameter. When driving TLS handshakes, must compose timeouts manually.
+
+**Current Workaround:**
+```perl
+my $read_f = Future::IO->waitfor_readable($socket);
+my $timeout_f = Future::IO->sleep($remaining)->then(sub {
+    return Future->fail('tls_timeout');
+});
+my $wait_f = Future->wait_any($read_f, $timeout_f);
+await $wait_f;
+```
+
+**Desired API:**
+```perl
+await Future::IO->waitfor_readable($socket, timeout => $remaining);
+```
+
+**Observation:** The non-blocking TLS pattern requires repeatedly calling this with timeout in a loop. The boilerplate adds up quickly.
+
 ---
 
 ## Implementation Observations (Phase 7 - Observability)
