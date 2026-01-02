@@ -73,9 +73,11 @@ my $redis = Future::IO::Redis->new(
     uri               => 'redis+unix:///var/run/redis.sock?db=1',
 
     # Timeouts (seconds)
-    connect_timeout   => 10,
-    read_timeout      => 30,
-    write_timeout     => 30,
+    connect_timeout   => 10,       # TCP connection establishment
+    read_timeout      => 30,       # Socket-level silence detection
+    write_timeout     => 30,       # Socket write buffer flush
+    request_timeout   => 5,        # Per-command deadline (authoritative)
+    blocking_timeout_buffer => 2,  # Extra time for BLPOP/BRPOP/etc.
 
     # Reconnection
     reconnect         => 1,           # enable auto-reconnect
@@ -163,14 +165,26 @@ Non-retryable:
 
 ### Timeout Implementation
 
+**Two-tier timeout model:**
+
+1. **Socket-level timeouts** - Detect dead connections:
 ```perl
-# Wrap Future::IO calls with timeout
+# Wrap Future::IO calls with socket timeouts
 my $connect_f = Future::IO->connect($socket, $sockaddr)
     ->timeout($self->{connect_timeout});
 
 my $read_f = Future::IO->read($socket, 65536)
     ->timeout($self->{read_timeout});
 ```
+
+2. **Request-level timeouts** - Authoritative per-command deadlines:
+```perl
+# Periodic timer checks deadlines (see Section 2: Timeout Semantics)
+# Each @inflight entry has its own deadline
+# Timeout = fail request + reset connection (RESP2 constraint)
+```
+
+See **Section 2: Timeout Semantics (Precise Definition)** for the full timer-based implementation.
 
 ---
 
@@ -297,6 +311,226 @@ sub _on_response {
     }
 }
 ```
+
+### Timeout Semantics (Precise Definition)
+
+Timeouts in Redis clients are subtle because:
+1. Redis has no request IDs - you can't match a late response to its request
+2. Pipelines may receive partial responses before timeout
+3. Blocking commands (BLPOP) intentionally wait server-side
+4. Socket-level timeouts conflict with request-level timeouts
+
+**Our solution: Per-request deadlines with connection reset on timeout.**
+
+#### Timeout Model
+
+```perl
+# Each @inflight entry stores its deadline
+push @inflight, {
+    future   => $future,
+    deadline => time() + $timeout,
+    command  => \@args,
+};
+```
+
+#### The Timeout Timer
+
+A periodic timer (100ms interval) checks for expired requests:
+
+```perl
+sub _start_timeout_timer {
+    my ($self) = @_;
+
+    $self->{timeout_timer} = IO::Async::Timer::Periodic->new(
+        interval => 0.1,  # 100ms
+        on_tick => sub { $self->_check_timeouts },
+    );
+    $loop->add($self->{timeout_timer});
+    $self->{timeout_timer}->start;
+}
+
+sub _check_timeouts {
+    my ($self) = @_;
+    my $now = time();
+
+    for my $entry (@{$self->{inflight}}) {
+        if ($now >= $entry->{deadline}) {
+            # Timeout expired - must reset connection
+            $self->_handle_timeout($entry);
+            return;  # Connection reset handles all inflight
+        }
+    }
+}
+```
+
+#### Critical Rule: Timeout = Reset Connection
+
+When a request times out:
+
+```perl
+sub _handle_timeout {
+    my ($self, $timed_out_entry) = @_;
+
+    # 1. Fail the timed-out request
+    $timed_out_entry->{future}->fail(
+        Future::IO::Redis::Error::Timeout->new(
+            message => "Request timed out after $self->{read_timeout}s",
+            command => $timed_out_entry->{command},
+        )
+    );
+
+    # 2. Fail ALL pending requests (we lost sync)
+    for my $entry (@{$self->{inflight}}) {
+        next if $entry->{future}->is_ready;
+        $entry->{future}->fail(
+            Future::IO::Redis::Error::Connection->new(
+                message => "Connection reset due to timeout",
+            )
+        );
+    }
+    @{$self->{inflight}} = ();
+
+    # 3. Reset connection (RESP2 has no way to resync)
+    $self->_reset_connection;
+
+    # 4. Trigger reconnect if enabled
+    $self->_schedule_reconnect if $self->{reconnect};
+}
+```
+
+**Why reset the entire connection?**
+
+In RESP2, if we read data after a timeout, we have no way to know which request it belongs to. The response stream is now desynchronized. The only safe action is to close the connection and start fresh.
+
+#### Socket Timeout vs Request Timeout
+
+| Type | Purpose | Behavior |
+|------|---------|----------|
+| `read_timeout` (socket) | Detect dead connections | Coarse-grained; fires if no data at all for N seconds |
+| `request_timeout` (per-request) | Authoritative deadline | Each request has its own deadline |
+
+```perl
+my $redis = Future::IO::Redis->new(
+    read_timeout    => 30,     # Socket-level: "connection seems dead"
+    request_timeout => 5,      # Request-level: "this command took too long"
+);
+```
+
+The socket-level `read_timeout` is a health check - if no data arrives for 30s, the connection is probably broken. The request-level `request_timeout` is the authoritative deadline for individual commands.
+
+**If `request_timeout` fires first:** Request fails, connection resets.
+**If `read_timeout` fires first:** Connection fails, all pending requests fail.
+
+Both result in the same outcome: failed requests and connection reset. But `request_timeout` provides more granular control.
+
+#### Blocking Command Deadlines
+
+Blocking commands (BLPOP, BRPOP, BLMOVE) have server-side timeouts:
+
+```perl
+# BLPOP with 30 second server timeout
+await $redis->blpop('queue', 30);
+```
+
+For these commands, the client deadline must account for the server timeout:
+
+```perl
+sub _calculate_deadline {
+    my ($self, $command, $args) = @_;
+
+    if ($self->_is_blocking_command($command)) {
+        # Blocking commands: server_timeout + buffer
+        my $server_timeout = $args->[-1];  # Last arg is timeout
+        return time() + $server_timeout + $self->{blocking_timeout_buffer};
+    }
+
+    # Normal commands: use request_timeout
+    return time() + $self->{request_timeout};
+}
+```
+
+Example with defaults:
+```perl
+my $redis = Future::IO::Redis->new(
+    request_timeout        => 5,     # Normal commands: 5s deadline
+    blocking_timeout_buffer => 2,    # Extra 2s for blocking commands
+);
+
+# GET 'key' → deadline = now + 5s
+# BLPOP 'queue' 30 → deadline = now + 30 + 2 = 32s
+```
+
+#### Pipeline Timeout Behavior
+
+Pipelines are atomic from the client's perspective:
+
+```perl
+my $pipe = $redis->pipeline;
+$pipe->set('a', 1);
+$pipe->set('b', 2);
+$pipe->get('a');
+my $results = await $pipe->execute;  # Single deadline for entire pipeline
+```
+
+The pipeline has **one deadline for all commands**. If any command times out, all pending commands in the pipeline fail, and the connection resets.
+
+```perl
+sub _execute_pipeline {
+    my ($self, $commands) = @_;
+
+    my $future = Future->new;
+    my $deadline = time() + $self->{request_timeout};
+
+    # Single @inflight entry for entire pipeline
+    push @{$self->{inflight}}, {
+        future   => $future,
+        deadline => $deadline,
+        command  => ['PIPELINE', scalar(@$commands), 'commands'],
+        expected_responses => scalar(@$commands),
+        responses => [],
+    };
+
+    # Send all commands
+    $self->_send_pipeline_commands($commands);
+
+    return $future;
+}
+```
+
+#### Timeout Configuration Summary
+
+```perl
+my $redis = Future::IO::Redis->new(
+    # Connection establishment
+    connect_timeout => 10,          # Max time to establish TCP connection
+
+    # Socket health
+    read_timeout  => 30,            # Max silence before assuming dead connection
+    write_timeout => 30,            # Max time for write buffer to flush
+
+    # Request deadlines
+    request_timeout => 5,           # Default deadline per command
+    blocking_timeout_buffer => 2,   # Extra time for blocking commands
+
+    # Per-command override (advanced)
+    timeout => {
+        'DEBUG SLEEP' => 120,       # Allow long DEBUG SLEEP
+        'SLOWLOG'     => 10,        # Server commands get more time
+    },
+);
+```
+
+#### Timeout Summary
+
+| Timeout Fires | Effect |
+|---------------|--------|
+| connect_timeout | Connection attempt fails, Error::Timeout |
+| read_timeout | Connection assumed dead, all inflight fail, reconnect |
+| request_timeout | Single request fails, all inflight fail, reset connection |
+| blocking command | Uses `server_timeout + buffer` as deadline |
+| pipeline | Single deadline for entire pipeline |
+
+**The key insight:** In RESP2, any timeout means connection reset. There's no way to recover sync. This is a fundamental protocol constraint, not a design choice.
 
 ### Usage Pattern
 
@@ -1065,22 +1299,31 @@ prove -l t/
 - Invalid URIs throw
 
 #### Step 3: Timeouts
-**Goal:** Connect, read, write timeouts
+**Goal:** Two-tier timeout system (socket-level + request-level)
 
 1. Run all tests
 2. Create `t/10-connection/timeout.t`
-3. Add timeout parameters to constructor
-4. Wrap `Future::IO` calls with `->timeout()`
-5. Run timeout tests
-6. Run all tests
-7. Run non-blocking proof (CRITICAL - timeouts must not block)
-8. Commit
+3. Add timeout parameters to constructor (connect, read, write, request, blocking_buffer)
+4. Implement socket-level timeouts (Future::IO->timeout)
+5. Implement request-level timeout timer (periodic 100ms check)
+6. Implement "timeout = reset connection" logic
+7. Implement blocking command deadline calculation
+8. Run timeout tests
+9. Run all tests
+10. Run non-blocking proof (CRITICAL - timeouts must not block)
+11. Commit
 
 **Tests to write:**
 - Connect timeout fires
-- Read timeout fires
-- Write timeout fires
-- Timeout throws `Error::Timeout`
+- Socket-level read timeout fires on silent connection
+- Socket-level write timeout fires on blocked write
+- Request timeout fires on slow command
+- Request timeout resets connection (verifiable via @inflight state)
+- All inflight requests fail when one times out
+- Blocking command uses server_timeout + buffer
+- Pipeline has single deadline for all commands
+- Per-command timeout override works
+- Timeout throws `Error::Timeout` with command info
 - Normal operations still work within timeout
 
 **Non-blocking verification:**
@@ -1100,6 +1343,29 @@ my $redis = Future::IO::Redis->new(
 eval { await $redis->connect };
 
 ok($timer_ticked, 'Event loop not blocked during connect timeout');
+```
+
+**Request timeout verification:**
+```perl
+# Verify request timeout resets connection
+my $redis = Future::IO::Redis->new(
+    host => 'localhost',
+    request_timeout => 0.5,  # 500ms
+);
+await $redis->connect;
+
+# Send DEBUG SLEEP which takes longer than timeout
+my $f1 = $redis->command('DEBUG', 'SLEEP', 2);  # 2 second sleep
+my $f2 = $redis->get('key');  # This should also fail
+
+# Both should fail with timeout/connection reset
+my @errors;
+try { await $f1 } catch ($e) { push @errors, $e }
+try { await $f2 } catch ($e) { push @errors, $e }
+
+is(scalar(@errors), 2, 'Both inflight requests failed');
+ok($errors[0]->isa('Future::IO::Redis::Error::Timeout'), 'First was timeout');
+ok($errors[1]->isa('Future::IO::Redis::Error::Connection'), 'Second was connection reset');
 ```
 
 #### Step 4: Reconnection
@@ -1486,7 +1752,10 @@ t/
 │   └── commands-generated.t  # Generated command methods exist
 ├── 10-connection/            # Connection tests
 │   ├── basic.t               # Connect, disconnect
-│   ├── timeout.t             # Connect/read/write timeouts
+│   ├── socket-timeout.t      # Socket-level timeouts (connect/read/write)
+│   ├── request-timeout.t     # Per-request deadline timeouts
+│   ├── timeout-reset.t       # Timeout causes connection reset
+│   ├── blocking-timeout.t    # BLPOP/BRPOP deadline calculation
 │   ├── reconnect.t           # Auto-reconnection
 │   ├── backoff.t             # Exponential backoff timing
 │   ├── events.t              # on_connect, on_disconnect, on_error
