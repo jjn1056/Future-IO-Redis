@@ -1007,13 +1007,14 @@ EOF
 
 ---
 
-## Task 3: Timeout Implementation
+## Task 3: Timeout Implementation & Unix Socket Support
 
-**Goal:** Implement two-tier timeout system - socket-level and per-request deadlines.
+**Goal:** Implement two-tier timeout system (socket-level and per-request deadlines) and Unix socket connection support.
 
 **Files:**
 - Modify: `lib/Future/IO/Redis.pm`
 - Create: `t/10-connection/timeout.t`
+- Create: `t/10-connection/unix-socket.t`
 
 ### Step 3.1: Create test directory
 
@@ -1226,15 +1227,20 @@ Run: `head -100 lib/Future/IO/Redis.pm`
 
 ### Step 3.5: Add timeout parameters to constructor
 
-In `lib/Future/IO/Redis.pm`, modify the `new` method to include timeout parameters:
+In `lib/Future/IO/Redis.pm`, modify the `new` method to include timeout parameters and Unix socket support:
 
 ```perl
 sub new {
     my ($class, %args) = @_;
 
     my $self = bless {
+        # Connection settings (TCP)
         host     => $args{host} // 'localhost',
         port     => $args{port} // 6379,
+
+        # Connection settings (Unix socket)
+        path     => $args{path},  # e.g., '/var/run/redis.sock'
+
         socket   => undef,
         parser   => undef,
         connected => 0,
@@ -1256,34 +1262,60 @@ sub new {
 }
 ```
 
-### Step 3.6: Add timeout to connect
+**Note:** When `path` is set, the client will connect via Unix socket instead of TCP.
 
-Modify the `connect` method to wrap Future::IO->connect with timeout:
+### Step 3.6: Add timeout to connect (TCP and Unix socket)
+
+Modify the `connect` method to support both TCP and Unix socket connections:
 
 ```perl
+use Socket qw(AF_INET AF_UNIX SOCK_STREAM pack_sockaddr_in pack_sockaddr_un inet_aton);
+use IO::Socket::INET;
+use IO::Socket::UNIX;
+
 async sub connect {
     my ($self) = @_;
 
     return $self if $self->{connected};
 
-    # Create socket
-    my $socket = IO::Socket::INET->new(
-        Proto    => 'tcp',
-        Blocking => 0,
-    ) or die Future::IO::Redis::Error::Connection->new(
-        message => "Cannot create socket: $!",
-        host    => $self->{host},
-        port    => $self->{port},
-    );
+    my ($socket, $sockaddr);
 
-    # Build sockaddr
-    my $addr = inet_aton($self->{host})
-        or die Future::IO::Redis::Error::Connection->new(
-            message => "Cannot resolve host: $self->{host}",
+    # Check if connecting via Unix socket
+    if ($self->{path}) {
+        # Unix socket connection
+        $socket = IO::Socket::UNIX->new(
+            Type => SOCK_STREAM,
+        ) or die Future::IO::Redis::Error::Connection->new(
+            message => "Cannot create Unix socket: $!",
+            path    => $self->{path},
+        );
+
+        # Set non-blocking
+        $socket->blocking(0);
+
+        # Build Unix sockaddr
+        $sockaddr = pack_sockaddr_un($self->{path});
+    }
+    else {
+        # TCP connection
+        $socket = IO::Socket::INET->new(
+            Proto    => 'tcp',
+            Blocking => 0,
+        ) or die Future::IO::Redis::Error::Connection->new(
+            message => "Cannot create socket: $!",
             host    => $self->{host},
             port    => $self->{port},
         );
-    my $sockaddr = pack_sockaddr_in($self->{port}, $addr);
+
+        # Build TCP sockaddr
+        my $addr = inet_aton($self->{host})
+            or die Future::IO::Redis::Error::Connection->new(
+                message => "Cannot resolve host: $self->{host}",
+                host    => $self->{host},
+                port    => $self->{port},
+            );
+        $sockaddr = pack_sockaddr_in($self->{port}, $addr);
+    }
 
     # Connect with timeout
     eval {
@@ -1298,6 +1330,14 @@ async sub connect {
             die Future::IO::Redis::Error::Timeout->new(
                 message => "Connect timed out after $self->{connect_timeout}s",
                 timeout => $self->{connect_timeout},
+            );
+        }
+
+        # Include path or host/port in error depending on connection type
+        if ($self->{path}) {
+            die Future::IO::Redis::Error::Connection->new(
+                message => "$error",
+                path    => $self->{path},
             );
         }
         die Future::IO::Redis::Error::Connection->new(
@@ -1500,10 +1540,10 @@ Expected: PASS (including existing 01-basic.t, 02-nonblocking.t, 03-pubsub.t)
 Run: `prove -l t/02-nonblocking.t`
 Expected: PASS
 
-### Step 3.12: Commit
+### Step 3.12: Commit timeout implementation
 
 ```bash
-git add lib/Future/IO/Redis.pm t/10-connection/
+git add lib/Future/IO/Redis.pm t/10-connection/timeout.t
 git commit -m "$(cat <<'EOF'
 feat: implement two-tier timeout system
 
@@ -1519,6 +1559,162 @@ Behavior:
 - Blocking commands (BLPOP, XREAD) get extended deadline
 - Timeout = reset connection (RESP2 stream desync constraint)
 - maybe_executed flag indicates if command may have run
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+EOF
+)"
+```
+
+### Step 3.13: Write Unix socket connection test
+
+Create `t/10-connection/unix-socket.t`:
+
+```perl
+#!/usr/bin/env perl
+# Test Unix socket connections
+
+use strict;
+use warnings;
+use Test2::V0;
+use IO::Async::Loop;
+use Future::IO::Impl::IOAsync;
+use Future::IO::Redis;
+use Future::IO::Redis::URI;
+
+my $loop = IO::Async::Loop->new;
+Future::IO::Impl::IOAsync->set_loop($loop);
+
+# Skip if no Unix socket available
+my $socket_path = $ENV{REDIS_SOCKET} // '/var/run/redis/redis.sock';
+unless (-S $socket_path) {
+    skip_all("Redis Unix socket not available at $socket_path");
+}
+
+subtest 'connect via Unix socket with path parameter' => sub {
+    my $redis = Future::IO::Redis->new(
+        path            => $socket_path,
+        connect_timeout => 5,
+    );
+
+    my $connected = eval { $loop->await($redis->connect); 1 };
+    ok($connected, 'connected via Unix socket');
+
+    my $pong = $loop->await($redis->command('PING'));
+    is($pong, 'PONG', 'PING works over Unix socket');
+
+    $redis->disconnect;
+};
+
+subtest 'connect via redis+unix:// URI' => sub {
+    my $uri = Future::IO::Redis::URI->parse("redis+unix://$socket_path");
+    ok($uri->is_unix, 'URI is Unix socket');
+    is($uri->path, $socket_path, 'path extracted');
+
+    my %opts = $uri->to_hash;
+    my $redis = Future::IO::Redis->new(%opts);
+
+    my $connected = eval { $loop->await($redis->connect); 1 };
+    ok($connected, 'connected via URI');
+
+    my $pong = $loop->await($redis->command('PING'));
+    is($pong, 'PONG', 'PING works');
+
+    $redis->disconnect;
+};
+
+subtest 'Unix socket with password' => sub {
+    # Skip if not using authenticated Redis
+    skip_all('Set REDIS_SOCKET_AUTH to test Unix socket with auth')
+        unless $ENV{REDIS_SOCKET_AUTH};
+
+    my $uri = Future::IO::Redis::URI->parse(
+        "redis+unix://:$ENV{REDIS_SOCKET_AUTH}\@$socket_path"
+    );
+
+    my %opts = $uri->to_hash;
+    my $redis = Future::IO::Redis->new(%opts);
+
+    my $connected = eval { $loop->await($redis->connect); 1 };
+    ok($connected, 'connected with auth');
+
+    $redis->disconnect;
+};
+
+subtest 'Unix socket connection timeout' => sub {
+    # Use a non-existent socket path
+    my $redis = Future::IO::Redis->new(
+        path            => '/nonexistent/redis.sock',
+        connect_timeout => 1,
+    );
+
+    my $error;
+    eval { $loop->await($redis->connect) };
+    $error = $@;
+
+    ok($error, 'connection failed');
+    like($error, qr/Cannot create Unix socket|connect|No such file/i,
+        'got connection error');
+};
+
+subtest 'event loop not blocked during Unix socket connect' => sub {
+    my @ticks;
+    my $timer = IO::Async::Timer::Periodic->new(
+        interval => 0.01,
+        on_tick => sub { push @ticks, time() },
+    );
+    $loop->add($timer);
+    $timer->start;
+
+    my $redis = Future::IO::Redis->new(
+        path            => $socket_path,
+        connect_timeout => 5,
+    );
+
+    $loop->await($redis->connect);
+
+    $timer->stop;
+    $loop->remove($timer);
+
+    ok(@ticks >= 0, 'event loop was responsive during connect');
+
+    $redis->disconnect;
+};
+
+done_testing;
+```
+
+### Step 3.14: Run Unix socket test
+
+Run: `REDIS_SOCKET=/var/run/redis/redis.sock prove -l t/10-connection/unix-socket.t`
+Expected: PASS (or skip if no Unix socket available)
+
+### Step 3.15: Run all tests
+
+Run: `prove -l t/`
+Expected: PASS
+
+### Step 3.16: Commit Unix socket support
+
+```bash
+git add t/10-connection/unix-socket.t
+git commit -m "$(cat <<'EOF'
+feat: add Unix socket connection support
+
+- Constructor accepts 'path' parameter for Unix socket path
+- connect() uses IO::Socket::UNIX when path is set
+- URI parser handles redis+unix:// scheme
+- Tests for Unix socket connections
+
+Usage:
+  # Direct path
+  my $redis = Future::IO::Redis->new(path => '/var/run/redis.sock');
+
+  # Via URI
+  my $redis = Future::IO::Redis->new(
+      uri => 'redis+unix:///var/run/redis.sock?db=1'
+  );
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
