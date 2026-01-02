@@ -125,6 +125,71 @@ Future::IO->watch_health($socket,
 
 ---
 
+## Implementation Observations (Phase 1)
+
+### Loop->await() vs Future->get()
+
+**Problem:** When using `$loop->await($future)`, the method doesn't throw on Future failure - it just waits. Must call `$future->get` separately to retrieve results and propagate exceptions.
+
+**Current Workaround:**
+```perl
+my $wait_f = Future->wait_any($operation_f, $timeout_f);
+$loop->await($wait_f);
+$wait_f->get;  # throws if failed
+```
+
+**Observation:** This is confusing behavior. Most Perl async users expect await to throw on failure like Promises do in JavaScript.
+
+### No Future->timeout() Method
+
+**Problem:** The base `Future` class doesn't have a `->timeout()` method. Must use `Future->wait_any()` with a sleep future.
+
+**Current Workaround:**
+```perl
+my $timeout_f = Future::IO->sleep($seconds)->then(sub {
+    return Future->fail('timeout');
+});
+my $result_f = Future->wait_any($operation_f, $timeout_f);
+```
+
+**Desired API:**
+```perl
+my $result = await $operation_f->timeout($seconds);
+```
+
+---
+
+## Implementation Observations (Phase 7 - Observability)
+
+### Fork Detection Primitive
+
+**Problem:** No built-in way to detect if the current process has forked. Must track PID manually.
+
+**Current Workaround:**
+```perl
+my $parent_pid = $$;
+# Later...
+if ($$ != $parent_pid) {
+    # Fork detected, invalidate connection
+}
+```
+
+**Desired API:**
+```perl
+Future::IO->on_fork(sub {
+    # Called immediately after fork in child process
+    # Can invalidate inherited connections
+});
+```
+
+### Async-Friendly Process Management
+
+**Problem:** Testing fork-related behavior requires `fork()` and `waitpid()` which are blocking. Verifying child behavior requires pipes and manual coordination.
+
+**Observation:** For reliability testing involving process management (restart Redis, network partitions), we need async-friendly helpers that don't block the event loop.
+
+---
+
 ## Notes
 
 These observations come from building Future::IO::Redis, specifically:
