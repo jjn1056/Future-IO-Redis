@@ -66,6 +66,14 @@ my $redis = Future::IO::Redis->new(
 
     # Connection identification
     client_name       => 'myapp',   # CLIENT SETNAME on connect
+
+    # Key prefixing (namespace isolation)
+    prefix            => 'myapp:',  # auto-prepend to all keys
+
+    # Performance tuning
+    read_buffer_size  => 65536,     # socket read buffer (default 64KB)
+    write_buffer_size => 65536,     # socket write buffer (default 64KB)
+    pipeline_depth    => 100,       # max pipelined commands before flush
 );
 ```
 
@@ -76,6 +84,55 @@ my $redis = Future::IO::Redis->new(
 - Exponential backoff: 0.1s -> 0.2s -> 0.4s -> ... -> 60s max
 - Jitter prevents thundering herd when many clients reconnect
 - `on_disconnect` fires with reason: `connection_lost`, `timeout`, `server_closed`
+- Key prefixing applied transparently to all key arguments
+- Fork safety: detect PID change and create fresh connections (for prefork servers)
+
+### Auto-Pipelining
+
+```perl
+my $redis = Future::IO::Redis->new(
+    auto_pipeline => 1,  # enable auto-pipelining
+);
+
+# Commands issued in same event loop tick are batched automatically
+my @futures = map { $redis->get("key$_") } (1..100);
+my @values = await Future->all(@futures);
+# Only 1 network round-trip instead of 100
+```
+
+When `auto_pipeline` enabled:
+- Commands queued until event loop yields
+- All queued commands sent as single pipeline
+- Responses distributed to original Futures
+- Transparent to caller - same API as non-pipelined
+
+### Retry Strategies
+
+```perl
+my $redis = Future::IO::Redis->new(
+    # Built-in strategies
+    retry => 'exponential',     # default: exponential backoff
+
+    # Or custom retry logic
+    retry => sub {
+        my ($attempt, $error, $command) = @_;
+        return 0 if $attempt > 5;           # give up after 5 tries
+        return 0 if $error->is_fatal;       # don't retry fatal errors
+        return 0 if $command eq 'SET';      # don't retry writes
+        return 0.1 * (2 ** $attempt);       # delay in seconds
+    },
+);
+```
+
+Retryable errors:
+- Connection lost (reconnect first, then retry)
+- Timeout (if idempotent command)
+- LOADING (Redis still loading dataset)
+- BUSY (script in progress)
+
+Non-retryable:
+- WRONGTYPE, OOM, NOSCRIPT, AUTH errors
+- Write commands (unless explicitly marked idempotent)
 
 ### Timeout Implementation
 
@@ -503,12 +560,31 @@ my $num_receivers = await $redis->publish('channel1', 'hello');
 4. **Message structure:**
    ```perl
    {
-       type    => 'message',      # or 'pmessage'
+       type    => 'message',      # or 'pmessage', 'smessage'
        channel => 'news:sports',
        pattern => 'news:*',       # only for pmessage
        data    => 'payload',
    }
    ```
+
+### Sharded PubSub (Redis 7+)
+
+```perl
+# Sharded subscribe - messages stay within cluster shard
+my $sub = await $redis->ssubscribe('channel1', 'channel2');
+
+while (my $msg = await $sub->next) {
+    say "Sharded message: $msg->{data}";
+}
+
+# Sharded publish
+my $num = await $redis->spublish('channel1', 'hello');
+```
+
+- Uses SSUBSCRIBE/SPUBLISH instead of SUBSCRIBE/PUBLISH
+- Messages routed to shard owning the channel's slot
+- Better scalability in Redis Cluster deployments
+- Reconnect replays sharded subscriptions too
 
 ---
 
@@ -673,11 +749,13 @@ lib/
 │           ├── Connection.pm           # Connection state machine
 │           ├── Pool.pm                 # Connection pooling
 │           ├── Pipeline.pm             # Command pipelining
+│           ├── AutoPipeline.pm         # Automatic batching
 │           ├── Transaction.pm          # MULTI/EXEC wrapper
 │           ├── Subscription.pm         # PubSub subscription object
 │           ├── Script.pm               # Lua script wrapper
 │           ├── Iterator.pm             # SCAN cursor iterator
 │           ├── URI.pm                  # Connection string parser
+│           ├── Telemetry.pm            # OpenTelemetry integration
 │           ├── Error.pm                # Exception base class
 │           └── Error/
 │               ├── Connection.pm
@@ -751,11 +829,103 @@ share/
 - Acquire/release pattern
 - Health checking
 
-### Phase 7: Testing & Polish
+### Phase 7: Observability
+- OpenTelemetry tracing hooks
+- Metrics collection
+- Debug logging
+
+### Phase 8: Testing & Polish
 - Integration tests with real Redis
 - Edge case handling
 - Documentation
 - CPAN release
+
+---
+
+## Section 13: Observability
+
+### OpenTelemetry Integration
+
+```perl
+use OpenTelemetry;
+
+my $redis = Future::IO::Redis->new(
+    host => 'localhost',
+
+    # Enable tracing
+    otel_tracer => OpenTelemetry->tracer_provider->tracer('redis'),
+
+    # Enable metrics
+    otel_meter => OpenTelemetry->meter_provider->meter('redis'),
+);
+```
+
+### Traces
+
+Each command creates a span:
+```
+Span: redis.GET
+├── db.system: redis
+├── db.operation: GET
+├── db.statement: GET mykey
+├── net.peer.name: localhost
+├── net.peer.port: 6379
+├── db.redis.database_index: 0
+└── duration: 1.2ms
+```
+
+### Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `redis.commands.total` | Counter | Commands executed, by command name |
+| `redis.commands.duration` | Histogram | Command latency |
+| `redis.connections.active` | Gauge | Current active connections |
+| `redis.connections.total` | Counter | Total connections created |
+| `redis.reconnects.total` | Counter | Reconnection attempts |
+| `redis.errors.total` | Counter | Errors by type |
+| `redis.pipeline.size` | Histogram | Commands per pipeline |
+
+### Debug Logging
+
+```perl
+my $redis = Future::IO::Redis->new(
+    debug => 1,                    # log all commands
+    debug => sub {                 # custom logger
+        my ($direction, $data) = @_;
+        # $direction: 'send' or 'recv'
+        warn "[$direction] $data\n";
+    },
+);
+```
+
+---
+
+## Section 14: Binary Data
+
+Redis supports binary-safe strings. Future::IO::Redis handles this correctly:
+
+```perl
+# Binary keys and values work
+my $binary = pack("C*", 0x00, 0x01, 0xFF, 0xFE);
+await $redis->set($binary, $binary);
+my $value = await $redis->get($binary);
+# $value eq $binary
+
+# UTF-8 strings auto-encoded
+await $redis->set('key', 'こんにちは');  # UTF-8 encoded
+my $text = await $redis->get('key');
+# $text is bytes, decode if needed: decode('UTF-8', $text)
+```
+
+### Encoding Policy
+
+- **Input**: Perl strings with UTF-8 flag → encoded to UTF-8 bytes
+- **Input**: Byte strings → sent as-is
+- **Output**: Always bytes (caller decodes if needed)
+- **Keys**: Same rules as values
+
+This matches Redis behavior: everything is bytes.
 
 ---
 
@@ -820,3 +990,8 @@ my $redis = Future::IO::Redis->new(
 8. **Pipelining efficient** - 8x+ speedup maintained
 9. **TLS works** - secure connections to cloud Redis
 10. **Pool works** - connection reuse under concurrent load
+11. **Auto-pipelining works** - transparent batching
+12. **Key prefixing works** - namespace isolation
+13. **Fork-safe** - works with prefork servers (Starman, etc.)
+14. **Binary-safe** - handles binary keys/values correctly
+15. **Observable** - OpenTelemetry traces/metrics available
