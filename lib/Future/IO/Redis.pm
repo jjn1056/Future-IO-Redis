@@ -19,6 +19,10 @@ use Future::IO::Redis::Error::Timeout;
 use Future::IO::Redis::Error::Disconnected;
 use Future::IO::Redis::Error::Redis;
 
+# Import auto-generated command methods
+use Future::IO::Redis::Commands;
+our @ISA = qw(Future::IO::Redis::Commands);
+
 # Try XS version first, fall back to pure Perl
 BEGIN {
     eval { require Protocol::Redis::XS; 1 }
