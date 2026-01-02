@@ -37,6 +37,14 @@ my $redis = Future::IO::Redis->new(
     host              => 'localhost',
     port              => 6379,
 
+    # Or Unix socket
+    path              => '/var/run/redis.sock',
+
+    # Or connection URI (overrides host/port/path)
+    uri               => 'redis://user:pass@localhost:6379/2',
+    uri               => 'rediss://localhost:6380/0',  # TLS
+    uri               => 'redis+unix:///var/run/redis.sock?db=1',
+
     # Timeouts (seconds)
     connect_timeout   => 10,
     read_timeout      => 30,
@@ -52,6 +60,12 @@ my $redis = Future::IO::Redis->new(
     on_connect    => sub { my ($redis) = @_; ... },
     on_disconnect => sub { my ($redis, $reason) = @_; ... },
     on_error      => sub { my ($redis, $error) = @_; ... },
+
+    # Queue management
+    queue_size        => 1000,      # max commands queued during reconnect
+
+    # Connection identification
+    client_name       => 'myapp',   # CLIENT SETNAME on connect
 );
 ```
 
@@ -167,12 +181,27 @@ my $redis = Future::IO::Redis->new(
 ### Connection Sequence
 
 ```
-1. TCP connect
+1. TCP connect (or Unix socket)
 2. TLS upgrade (if tls => 1)
 3. AUTH username password (if credentials provided)
 4. SELECT database (if database specified)
-5. Connection ready
+5. CLIENT SETNAME (if client_name specified)
+6. Connection ready
 ```
+
+### URI Format
+
+```
+redis://[[username:]password@]host[:port][/database]
+rediss://...                    # TLS enabled
+redis+unix://[:password@]/path/to/socket[?db=N]
+```
+
+Examples:
+- `redis://localhost` - defaults to port 6379, db 0
+- `redis://:secret@localhost:6380/2` - password, custom port, db 2
+- `rediss://user:pass@redis.example.com` - TLS with ACL auth
+- `redis+unix:///var/run/redis.sock?db=1` - Unix socket
 
 ### Reconnect Behavior
 
@@ -187,7 +216,241 @@ my $redis = Future::IO::Redis->new(
 
 ---
 
-## Section 4: PubSub
+## Section 4: Pipelining
+
+### Basic Pipeline API
+
+```perl
+# Build pipeline, execute all at once
+my $pipe = $redis->pipeline;
+$pipe->set('key1', 'value1');
+$pipe->set('key2', 'value2');
+$pipe->get('key1');
+$pipe->incr('counter');
+
+my $results = await $pipe->execute;
+# $results = ['OK', 'OK', 'value1', 1]
+```
+
+### Chained Style
+
+```perl
+my $results = await $redis->pipeline
+    ->set('a', 1)
+    ->set('b', 2)
+    ->get('a')
+    ->get('b')
+    ->execute;
+```
+
+### Error Handling
+
+```perl
+# Individual command errors don't fail the pipeline
+my $results = await $redis->pipeline
+    ->set('key', 'value')
+    ->incr('key')           # WRONGTYPE error
+    ->get('key')
+    ->execute;
+
+# $results = ['OK', Error::Redis->new(...), 'value']
+# Check each result for errors
+```
+
+### Behavior
+
+- Commands queued locally until `execute` called
+- All commands sent in single write (atomic network operation)
+- Responses collected in order
+- Individual command errors captured, don't abort pipeline
+- Pipeline object is single-use (cannot re-execute)
+
+---
+
+## Section 5: Transactions
+
+### Basic Transaction
+
+```perl
+my $results = await $redis->multi(async sub {
+    my ($tx) = @_;
+    $tx->incr('counter');
+    $tx->get('counter');
+    $tx->set('updated', time());
+});
+# $results = [1, '1', 'OK']
+```
+
+### WATCH for Optimistic Locking
+
+```perl
+# Watch keys, abort if they change before EXEC
+my $results = await $redis->watch_multi(['balance'], async sub {
+    my ($tx, $watched) = @_;
+
+    # $watched contains current values of watched keys
+    my $balance = $watched->{balance};
+
+    if ($balance >= 100) {
+        $tx->decrby('balance', 100);
+        $tx->incr('purchases');
+    }
+});
+
+# Returns undef if WATCH failed (key changed)
+# Returns results array if successful
+```
+
+### Manual Transaction Control
+
+```perl
+await $redis->watch('key1', 'key2');
+await $redis->multi;
+await $redis->incr('key1');
+await $redis->decr('key2');
+my $results = await $redis->exec;  # undef if watch failed
+await $redis->unwatch;             # clear watches
+```
+
+### Behavior
+
+- MULTI queues commands server-side
+- EXEC executes atomically
+- WATCH enables optimistic locking
+- DISCARD aborts transaction
+- Nested transactions not supported (Redis limitation)
+
+---
+
+## Section 6: Lua Scripting
+
+### EVAL
+
+```perl
+my $result = await $redis->eval(
+    'return redis.call("GET", KEYS[1])',
+    1,           # number of keys
+    'mykey',     # KEYS[1]
+);
+```
+
+### EVALSHA with Auto-Fallback
+
+```perl
+# Load script, get SHA
+my $sha = await $redis->script_load($lua_code);
+
+# Execute by SHA (faster, less bandwidth)
+my $result = await $redis->evalsha($sha, 1, 'mykey');
+
+# Auto-fallback: tries SHA, falls back to EVAL if NOSCRIPT
+my $result = await $redis->evalsha_or_eval(
+    $sha,
+    $lua_code,
+    1,
+    'mykey'
+);
+```
+
+### Script Object Pattern
+
+```perl
+# Define reusable script
+my $script = $redis->script(<<'LUA');
+    local current = redis.call('GET', KEYS[1]) or 0
+    local new = current + ARGV[1]
+    redis.call('SET', KEYS[1], new)
+    return new
+LUA
+
+# Execute (auto-loads SHA on first use)
+my $result = await $script->call('counter', 10);
+```
+
+---
+
+## Section 7: Blocking Commands
+
+### BLPOP / BRPOP
+
+```perl
+# Block up to 30 seconds for item
+my $result = await $redis->blpop('queue', 30);
+# $result = ['queue', 'item'] or undef on timeout
+
+# Multiple queues (priority order)
+my $result = await $redis->blpop('high', 'medium', 'low', 10);
+```
+
+### Timeout Handling
+
+```perl
+# Blocking commands use their own timeout, not read_timeout
+# The Redis timeout (last arg) controls server-side blocking
+# Client adds small buffer to avoid race conditions
+
+my $redis = Future::IO::Redis->new(
+    read_timeout => 30,
+    blocking_timeout_buffer => 2,  # extra seconds for blocking commands
+);
+
+# blpop('queue', 60) uses 62 second client timeout
+```
+
+### BRPOPLPUSH / BLMOVE
+
+```perl
+my $item = await $redis->brpoplpush('src', 'dst', 30);
+my $item = await $redis->blmove('src', 'dst', 'RIGHT', 'LEFT', 30);
+```
+
+---
+
+## Section 8: SCAN Iterators
+
+### Basic SCAN
+
+```perl
+# Returns iterator object
+my $iter = $redis->scan_iter(match => 'user:*', count => 100);
+
+while (my $keys = await $iter->next) {
+    for my $key (@$keys) {
+        say $key;
+    }
+}
+```
+
+### HSCAN / SSCAN / ZSCAN
+
+```perl
+# Hash fields
+my $iter = $redis->hscan_iter('myhash', match => 'field:*');
+while (my $pairs = await $iter->next) {
+    my %batch = @$pairs;  # field => value pairs
+}
+
+# Set members
+my $iter = $redis->sscan_iter('myset', match => 'prefix:*');
+
+# Sorted set members with scores
+my $iter = $redis->zscan_iter('myzset', match => '*');
+while (my $pairs = await $iter->next) {
+    # [member, score, member, score, ...]
+}
+```
+
+### Iterator Behavior
+
+- Cursor managed internally
+- Returns batches (not individual items)
+- `next` returns undef when iteration complete
+- Safe to use during key modifications
+- `count` is hint, not guarantee
+
+---
+
+## Section 9: PubSub
 
 ### Subscribe API
 
@@ -410,7 +673,11 @@ lib/
 │           ├── Connection.pm           # Connection state machine
 │           ├── Pool.pm                 # Connection pooling
 │           ├── Pipeline.pm             # Command pipelining
+│           ├── Transaction.pm          # MULTI/EXEC wrapper
 │           ├── Subscription.pm         # PubSub subscription object
+│           ├── Script.pm               # Lua script wrapper
+│           ├── Iterator.pm             # SCAN cursor iterator
+│           ├── URI.pm                  # Connection string parser
 │           ├── Error.pm                # Exception base class
 │           └── Error/
 │               ├── Connection.pm
@@ -453,11 +720,14 @@ share/
 - Timeouts (connect, read, write)
 - Error exception classes
 - Typed error handling
+- URI connection strings
+- Unix socket support
 
 ### Phase 2: Reconnection
 - Automatic reconnect with backoff
 - Connection events (on_connect, on_disconnect)
 - Command queuing during reconnect
+- CLIENT SETNAME on connect
 
 ### Phase 3: Security
 - AUTH (password and username/password)
@@ -469,16 +739,72 @@ share/
 - Full command coverage from redis-doc
 - Transformers for special commands
 
-### Phase 5: Connection Pool
+### Phase 5: Advanced Features
+- Pipelining (already sketched, refine)
+- Transactions (MULTI/EXEC/WATCH)
+- Lua scripting (EVAL/EVALSHA/Script objects)
+- Blocking command handling
+- SCAN iterators
+
+### Phase 6: Connection Pool
 - Pool management (min/max/idle)
 - Acquire/release pattern
 - Health checking
 
-### Phase 6: Testing & Polish
+### Phase 7: Testing & Polish
 - Integration tests with real Redis
 - Edge case handling
 - Documentation
 - CPAN release
+
+---
+
+## Future Work (Post-1.0)
+
+These features are explicitly out of scope for initial release but designed for:
+
+### Sentinel Support
+
+```perl
+my $redis = Future::IO::Redis->new(
+    sentinels => [
+        'sentinel1.example.com:26379',
+        'sentinel2.example.com:26379',
+        'sentinel3.example.com:26379',
+    ],
+    service => 'mymaster',
+);
+```
+
+- Query sentinels for master address
+- Subscribe to failover notifications
+- Automatic reconnect to new master
+
+### Cluster Support
+
+```perl
+my $cluster = Future::IO::Redis::Cluster->new(
+    nodes => ['node1:7000', 'node2:7001', 'node3:7002'],
+);
+
+await $cluster->set('foo', 'bar');  # routes to correct node
+```
+
+- Slot-based routing
+- MOVED/ASK redirect handling
+- Hash tags for co-location
+
+### RESP3 Protocol
+
+```perl
+my $redis = Future::IO::Redis->new(
+    protocol => 3,  # RESP3
+);
+```
+
+- Better type information (maps, sets, booleans, nulls)
+- Inline PubSub (no separate connection needed)
+- Client-side caching invalidation via push notifications
 
 ---
 
@@ -489,4 +815,8 @@ share/
 3. **Graceful reconnect** - survives Redis restart
 4. **PAGI-Channels works** - PubSub reliable under load
 5. **API compatible** with Net::Async::Redis naming
-6. **Full command coverage** - 200+ Redis commands
+6. **Full command coverage** - 200+ Redis commands auto-generated
+7. **Transactions work** - MULTI/EXEC/WATCH atomic operations
+8. **Pipelining efficient** - 8x+ speedup maintained
+9. **TLS works** - secure connections to cloud Redis
+10. **Pool works** - connection reuse under concurrent load
