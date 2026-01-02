@@ -23,6 +23,9 @@ use Future::IO::Redis::Error::Redis;
 use Future::IO::Redis::Commands;
 our @ISA = qw(Future::IO::Redis::Commands);
 
+# Key extraction for prefixing
+use Future::IO::Redis::KeyExtractor;
+
 # Try XS version first, fall back to pure Perl
 BEGIN {
     eval { require Protocol::Redis::XS; 1 }
@@ -106,8 +109,11 @@ sub new {
         database    => $args{database} // 0,
         client_name => $args{client_name},
 
-        # TLS (will implement fully in Task 6)
+        # TLS
         tls => $args{tls},
+
+        # Key prefixing
+        prefix => $args{prefix},
     }, $class;
 
     return $self;
@@ -479,7 +485,14 @@ async sub _reconnect {
 
 # Execute a Redis command
 async sub command {
-    my ($self, @args) = @_;
+    my ($self, $cmd, @args) = @_;
+
+    # Apply key prefixing if configured
+    if (defined $self->{prefix} && $self->{prefix} ne '') {
+        @args = Future::IO::Redis::KeyExtractor::apply_prefix(
+            $self->{prefix}, $cmd, @args
+        );
+    }
 
     # If disconnected and reconnect enabled, try to reconnect
     if (!$self->{connected} && $self->{reconnect}) {
@@ -490,13 +503,13 @@ async sub command {
         message => "Not connected",
     ) unless $self->{connected};
 
-    my $cmd = $self->_build_command(@args);
+    my $raw_cmd = $self->_build_command($cmd, @args);
 
     # Calculate deadline based on command type
-    my $deadline = $self->_calculate_deadline($args[0], @args[1..$#args]);
+    my $deadline = $self->_calculate_deadline($cmd, @args);
 
     # Send command
-    await $self->_send($cmd);
+    await $self->_send($raw_cmd);
 
     # Read response with timeout
     my $response = await $self->_read_response_with_deadline($deadline, \@args);
