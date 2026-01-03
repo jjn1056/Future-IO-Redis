@@ -96,8 +96,6 @@ sub new {
         socket   => undef,
         parser   => undef,
         connected => 0,
-        subscribing => 0,
-        _read_buffer => '',
 
         # Timeout settings
         connect_timeout         => $args{connect_timeout} // 10,
@@ -114,9 +112,7 @@ sub new {
         reconnect_delay     => $args{reconnect_delay} // 0.1,
         reconnect_delay_max => $args{reconnect_delay_max} // 60,
         reconnect_jitter    => $args{reconnect_jitter} // 0.25,
-        queue_size          => $args{queue_size} // 1000,
         _reconnect_attempt  => 0,
-        _command_queue      => [],
 
         # Callbacks
         on_connect    => $args{on_connect},
@@ -1623,14 +1619,13 @@ For high-throughput applications, use L<Future::IO::Redis::Pool>:
     use Future::IO::Redis::Pool;
 
     my $pool = Future::IO::Redis::Pool->new(
-        host            => 'localhost',
-        min_connections => 2,
-        max_connections => 10,
+        host => 'localhost',
+        min  => 2,
+        max  => 10,
     );
 
-    await $pool->initialize;
-
-    my $result = await $pool->execute(sub {
+    # Use with() for automatic acquire/release
+    my $result = await $pool->with(sub {
         my ($conn) = @_;
         return $conn->get('key');
     });

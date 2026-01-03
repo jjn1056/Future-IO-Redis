@@ -152,14 +152,13 @@ my $results = await $redis->watch_multi(['counter'], async sub {
 use Future::IO::Redis::Pool;
 
 my $pool = Future::IO::Redis::Pool->new(
-    host            => 'localhost',
-    min_connections => 2,
-    max_connections => 10,
+    host => 'localhost',
+    min  => 2,
+    max  => 10,
 );
 
-await $pool->initialize;
-
-my $result = await $pool->execute(sub {
+# Use the with() pattern for automatic acquire/release
+my $result = await $pool->with(sub {
     my ($conn) = @_;
     return $conn->get('key');
 });

@@ -317,9 +317,6 @@ sub _can_attempt_cleanup {
     # declared the stream desynced.
     return 0 if $conn->inflight_count > 0;
 
-    # Protocol error - stream already known-desynced
-    return 0 if $conn->{protocol_error};
-
     # Cleanup MAY be attempted for these (still risky, but bounded):
     # - in_multi: DISCARD is safe if we're actually in MULTI
     # - watching: UNWATCH is always safe
