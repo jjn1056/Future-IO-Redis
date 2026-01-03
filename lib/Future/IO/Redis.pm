@@ -37,6 +37,7 @@ use Future::IO::Redis::Iterator;
 
 # Pipeline support
 use Future::IO::Redis::Pipeline;
+use Future::IO::Redis::AutoPipeline;
 
 # Try XS version first, fall back to pure Perl
 BEGIN {
@@ -129,6 +130,7 @@ sub new {
 
         # Pipeline settings
         pipeline_depth => $args{pipeline_depth} // 10000,
+        auto_pipeline  => $args{auto_pipeline} // 0,
 
         # Transaction state
         in_multi => 0,
@@ -215,6 +217,14 @@ async sub connect {
 
     # Run Redis protocol handshake (AUTH, SELECT, CLIENT SETNAME)
     await $self->_redis_handshake;
+
+    # Initialize auto-pipeline if enabled
+    if ($self->{auto_pipeline}) {
+        $self->{_auto_pipeline} = Future::IO::Redis::AutoPipeline->new(
+            redis     => $self,
+            max_depth => $self->{pipeline_depth},
+        );
+    }
 
     # Fire on_connect callback and reset reconnect counter
     if ($self->{on_connect}) {
@@ -511,6 +521,11 @@ async sub command {
         @args = Future::IO::Redis::KeyExtractor::apply_prefix(
             $self->{prefix}, $cmd, @args
         );
+    }
+
+    # Route through auto-pipeline if enabled
+    if ($self->{_auto_pipeline}) {
+        return await $self->{_auto_pipeline}->command($cmd, @args);
     }
 
     # If disconnected and reconnect enabled, try to reconnect
