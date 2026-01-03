@@ -941,6 +941,19 @@ async sub _execute_transaction {
 sub in_multi { shift->{in_multi} }
 sub watching { shift->{watching} }
 sub in_pubsub { shift->{in_pubsub} }
+sub inflight_count { scalar @{shift->{inflight} // []} }
+
+# Is connection dirty (unsafe to reuse)?
+sub is_dirty {
+    my ($self) = @_;
+
+    return 1 if $self->{in_multi};
+    return 1 if $self->{watching};
+    return 1 if $self->{in_pubsub};
+    return 1 if @{$self->{inflight} // []} > 0;
+
+    return 0;
+}
 
 async sub watch {
     my ($self, @keys) = @_;
