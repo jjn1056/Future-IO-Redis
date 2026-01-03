@@ -1313,7 +1313,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis - Non-blocking Redis client using Future::IO
+Future::IO::Redis - Async Redis client using Future::IO
 
 =head1 SYNOPSIS
 
@@ -1324,28 +1324,29 @@ Future::IO::Redis - Non-blocking Redis client using Future::IO
 
     my $loop = IO::Async::Loop->new;
 
-    my $redis = Future::IO::Redis->new(host => 'localhost', port => 6379);
+    my $redis = Future::IO::Redis->new(
+        host => 'localhost',
+        port => 6379,
+    );
 
-    # Use await keyword for async operations
     (async sub {
         await $redis->connect;
 
-        # Basic commands
-        await $redis->set('foo', 'bar');
-        my $value = await $redis->get('foo');
+        # Simple commands
+        await $redis->set('key', 'value');
+        my $value = await $redis->get('key');
 
-        # Pipelining
-        my $results = await $redis->pipeline
-            ->set('a', 1)
-            ->set('b', 2)
-            ->get('a')
-            ->get('b')
-            ->execute;
+        # Pipelining for efficiency
+        my $pipeline = $redis->pipeline;
+        $pipeline->set('k1', 'v1');
+        $pipeline->set('k2', 'v2');
+        $pipeline->get('k1');
+        my $results = await $pipeline->execute;
 
-        # Pub/Sub
-        my $sub = await $redis->subscribe('news');
+        # PubSub
+        my $sub = await $redis->subscribe('channel');
         while (my $msg = await $sub->next_message) {
-            say "Got: $msg->{message} on $msg->{channel}";
+            print "Received: $msg->{message}\n";
         }
     })->();
 
@@ -1353,8 +1354,387 @@ Future::IO::Redis - Non-blocking Redis client using Future::IO
 
 =head1 DESCRIPTION
 
-Future::IO::Redis provides a non-blocking Redis client built on Future::IO,
-making it event-loop agnostic. It works with IO::Async, AnyEvent, UV, or
-any other Future::IO implementation.
+Future::IO::Redis is an asynchronous Redis client built on L<Future::IO>,
+providing a modern, non-blocking interface for Redis operations.
+
+Key features:
+
+=over 4
+
+=item * Full async/await support via L<Future::AsyncAwait>
+
+=item * Event loop agnostic (IO::Async, AnyEvent, UV, etc.)
+
+=item * Automatic reconnection with exponential backoff
+
+=item * Connection pooling with health checks
+
+=item * Pipelining and auto-pipelining
+
+=item * PubSub with automatic subscription replay on reconnect
+
+=item * Transaction support (MULTI/EXEC/WATCH)
+
+=item * TLS/SSL connections
+
+=item * OpenTelemetry observability integration
+
+=item * Fork-safe for pre-fork servers (Starman, etc.)
+
+=item * Full RESP2 protocol support
+
+=back
+
+=head1 CONSTRUCTOR
+
+=head2 new
+
+    my $redis = Future::IO::Redis->new(%options);
+
+Creates a new Redis client instance. Does not connect immediately.
+
+Options:
+
+=over 4
+
+=item host => $hostname
+
+Redis server hostname. Default: 'localhost'
+
+=item port => $port
+
+Redis server port. Default: 6379
+
+=item uri => $uri
+
+Connection URI (e.g., 'redis://user:pass@host:port/db').
+If provided, overrides host, port, password, database options.
+
+=item password => $password
+
+Authentication password.
+
+=item username => $username
+
+Authentication username (Redis 6+ ACL).
+
+=item database => $db
+
+Database number to SELECT after connect. Default: 0
+
+=item tls => $bool | \%options
+
+Enable TLS/SSL connection. Can be a boolean or hashref with options:
+
+    tls => {
+        ca_file   => '/path/to/ca.crt',
+        cert_file => '/path/to/client.crt',
+        key_file  => '/path/to/client.key',
+        verify    => 1,  # verify server certificate
+    }
+
+=item connect_timeout => $seconds
+
+Connection timeout. Default: 10
+
+=item read_timeout => $seconds
+
+Read timeout. Default: 30
+
+=item request_timeout => $seconds
+
+Per-request timeout. Default: 5
+
+=item reconnect => $bool
+
+Enable automatic reconnection. Default: 0
+
+=item reconnect_delay => $seconds
+
+Initial reconnect delay. Default: 0.1
+
+=item reconnect_delay_max => $seconds
+
+Maximum reconnect delay. Default: 60
+
+=item reconnect_jitter => $ratio
+
+Jitter ratio for reconnect delays. Default: 0.25
+
+=item on_connect => $coderef
+
+Callback when connection established.
+
+=item on_disconnect => $coderef
+
+Callback when connection lost.
+
+=item on_error => $coderef
+
+Callback for connection errors.
+
+=item prefix => $prefix
+
+Key prefix applied to all commands.
+
+=item client_name => $name
+
+CLIENT SETNAME value sent on connect.
+
+=item debug => $bool
+
+Enable debug logging.
+
+=item otel_tracer => $tracer
+
+OpenTelemetry tracer for span creation.
+
+=item otel_meter => $meter
+
+OpenTelemetry meter for metrics.
+
+=back
+
+=head1 METHODS
+
+=head2 connect
+
+    await $redis->connect;
+
+Establish connection to Redis server. Returns a Future that resolves
+to the Redis client instance.
+
+=head2 disconnect
+
+    $redis->disconnect;
+
+Close connection gracefully.
+
+=head2 command
+
+    my $result = await $redis->command('GET', 'key');
+
+Execute arbitrary Redis command.
+
+=head2 Redis Commands
+
+All standard Redis commands are available as methods:
+
+    # Strings
+    await $redis->set('key', 'value');
+    my $value = await $redis->get('key');
+    await $redis->incr('counter');
+    await $redis->mset('k1', 'v1', 'k2', 'v2');
+    my $values = await $redis->mget('k1', 'k2');
+
+    # Hashes
+    await $redis->hset('hash', 'field', 'value');
+    my $value = await $redis->hget('hash', 'field');
+    my $all = await $redis->hgetall('hash');
+
+    # Lists
+    await $redis->lpush('list', 'value');
+    my $value = await $redis->rpop('list');
+    my $items = await $redis->lrange('list', 0, -1);
+
+    # Sets
+    await $redis->sadd('set', 'member');
+    my $members = await $redis->smembers('set');
+
+    # Sorted Sets
+    await $redis->zadd('zset', 1, 'member');
+    my $range = await $redis->zrange('zset', 0, -1);
+
+    # Keys
+    my $exists = await $redis->exists('key');
+    await $redis->expire('key', 300);
+    await $redis->del('key1', 'key2');
+
+See L<https://redis.io/commands> for full command reference.
+
+=head2 pipeline
+
+    my $pipeline = $redis->pipeline;
+    $pipeline->set('k1', 'v1');
+    $pipeline->incr('counter');
+    my $results = await $pipeline->execute;
+
+Create a pipeline for batched command execution. All commands are
+sent in a single network round-trip.
+
+=head2 subscribe
+
+    my $sub = await $redis->subscribe('channel1', 'channel2');
+
+Subscribe to channels. Returns a L<Future::IO::Redis::Subscription> object.
+
+=head2 psubscribe
+
+    my $sub = await $redis->psubscribe('chan:*');
+
+Subscribe to pattern. Returns a Subscription object.
+
+=head2 multi
+
+    my $results = await $redis->multi(async sub {
+        my ($tx) = @_;
+        $tx->set('k1', 'v1');
+        $tx->incr('counter');
+    });
+
+Execute a transaction with callback.
+
+=head2 watch
+
+    await $redis->watch('key1', 'key2');
+
+Watch keys for transaction.
+
+=head2 watch_multi
+
+    my $results = await $redis->watch_multi(['key'], async sub {
+        my ($tx, $values) = @_;
+        $tx->set('key', $values->{key} + 1);
+    });
+
+Watch keys and execute transaction atomically. Returns undef if
+watched keys were modified by another client.
+
+=head2 script
+
+    my $script = $redis->script('return redis.call("get", KEYS[1])');
+    my $result = await $script->run(['mykey']);
+
+Create a Lua script object with automatic EVALSHA optimization.
+
+=head2 scan_iter
+
+    my $iter = $redis->scan_iter(match => 'user:*', count => 100);
+    while (my $keys = await $iter->next) {
+        for my $key (@$keys) { ... }
+    }
+
+Create an iterator for SCAN. Also available: hscan_iter, sscan_iter, zscan_iter.
+
+=head1 CONNECTION POOLING
+
+For high-throughput applications, use L<Future::IO::Redis::Pool>:
+
+    use Future::IO::Redis::Pool;
+
+    my $pool = Future::IO::Redis::Pool->new(
+        host            => 'localhost',
+        min_connections => 2,
+        max_connections => 10,
+    );
+
+    await $pool->initialize;
+
+    my $result = await $pool->execute(sub {
+        my ($conn) = @_;
+        return $conn->get('key');
+    });
+
+=head1 ERROR HANDLING
+
+Errors are thrown as exception objects:
+
+    use Try::Tiny;
+
+    try {
+        await $redis->get('key');
+    } catch {
+        if ($_->isa('Future::IO::Redis::Error::Connection')) {
+            # Connection error
+        } elsif ($_->isa('Future::IO::Redis::Error::Timeout')) {
+            # Timeout error
+        } elsif ($_->isa('Future::IO::Redis::Error::Redis')) {
+            # Redis error (e.g., WRONGTYPE)
+        }
+    };
+
+Exception classes:
+
+=over 4
+
+=item Future::IO::Redis::Error::Connection
+
+Connection-related errors (refused, reset, etc.)
+
+=item Future::IO::Redis::Error::Timeout
+
+Timeout errors (connect, request, read).
+
+=item Future::IO::Redis::Error::Protocol
+
+Protocol parsing errors.
+
+=item Future::IO::Redis::Error::Redis
+
+Errors returned by Redis (WRONGTYPE, ERR, etc.)
+
+=item Future::IO::Redis::Error::Disconnected
+
+Operation attempted on disconnected client.
+
+=back
+
+=head1 FORK SAFETY
+
+Future::IO::Redis is fork-safe. When a fork is detected, the child
+process will automatically invalidate its connection state and
+reconnect when needed. The parent retains ownership of the original
+connection.
+
+=head1 OBSERVABILITY
+
+OpenTelemetry integration is available:
+
+    use OpenTelemetry::SDK;
+
+    my $redis = Future::IO::Redis->new(
+        host        => 'localhost',
+        otel_tracer => OpenTelemetry->tracer_provider->tracer('my-app'),
+        otel_meter  => OpenTelemetry->meter_provider->meter('my-app'),
+    );
+
+This enables:
+
+=over 4
+
+=item * Distributed tracing with spans per Redis command
+
+=item * Metrics: command latency, connection counts, errors
+
+=item * Automatic attribute extraction (command, database, etc.)
+
+=back
+
+=head1 SEE ALSO
+
+=over 4
+
+=item * L<Future::IO> - The underlying async I/O abstraction
+
+=item * L<Future::AsyncAwait> - Async/await syntax support
+
+=item * L<Future::IO::Redis::Pool> - Connection pooling
+
+=item * L<Future::IO::Redis::Subscription> - PubSub subscriptions
+
+=item * L<Redis> - Synchronous Redis client
+
+=item * L<Net::Async::Redis> - Another async Redis client
+
+=back
+
+=head1 AUTHOR
+
+John Googoo
+
+=head1 COPYRIGHT AND LICENSE
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
 
 =cut

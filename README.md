@@ -1,29 +1,188 @@
-# Future::IO::Redis - Sketch
+# Future::IO::Redis
 
-Non-blocking Redis client using Future::IO (event-loop agnostic).
+Async Redis client for Perl using Future::IO
 
-## Status
+## Features
 
-**SKETCH** - Proof of concept, not production ready.
+- **Truly async** - Non-blocking I/O using Future::IO
+- **Event loop agnostic** - Works with IO::Async, AnyEvent, UV, or any Future::IO implementation
+- **Pipelining** - Batch commands for improved throughput
+- **Connection pooling** - Built-in connection pool with health checks
+- **PubSub** - Subscribe to channels and patterns with automatic reconnect
+- **Transactions** - MULTI/EXEC with WATCH support
+- **TLS/SSL** - Secure connections with certificate verification
+- **Fork-safe** - Works with pre-fork servers like Starman
+- **Observability** - OpenTelemetry tracing and metrics integration
 
-## Test Results
-
-```
-t/01-basic.t ........ ok (8 tests - connect, ping, set/get, incr, lists, null)
-t/02-nonblocking.t .. ok (4 tests - parallel, pipelining, event loop, pool)
-
-Key metrics:
-- Pipeline speedup: 8.1x (10 ops pipelined vs sequential)
-- Timer ran during Redis ops (proves non-blocking I/O)
-- Connection pool: 1.3ms for parallel operations
-```
-
-## Dependencies
+## Installation
 
 ```bash
+cpanm Future::IO::Redis
+
+# Or with dependencies
 cpanm Future::IO Future::AsyncAwait Protocol::Redis IO::Async
-# Optional for performance:
+
+# Optional for better performance:
 cpanm Protocol::Redis::XS
+```
+
+## Quick Start
+
+```perl
+use Future::IO::Redis;
+use Future::AsyncAwait;
+use IO::Async::Loop;
+use Future::IO::Impl::IOAsync;
+
+my $loop = IO::Async::Loop->new;
+
+my $redis = Future::IO::Redis->new(
+    host => 'localhost',
+    port => 6379,
+);
+
+(async sub {
+    await $redis->connect;
+
+    # Basic commands
+    await $redis->set('foo', 'bar');
+    my $value = await $redis->get('foo');
+    print "Value: $value\n";
+
+    # Pipelining
+    my $pipe = $redis->pipeline;
+    $pipe->set('k1', 'v1');
+    $pipe->set('k2', 'v2');
+    $pipe->get('k1');
+    my $results = await $pipe->execute;
+
+    $redis->disconnect;
+})->();
+
+$loop->run;
+```
+
+## Usage Examples
+
+### Connection Options
+
+```perl
+my $redis = Future::IO::Redis->new(
+    # Basic connection
+    host => 'localhost',
+    port => 6379,
+
+    # Or use URI
+    uri => 'redis://user:pass@host:6379/1',
+
+    # Authentication
+    password => 'secret',
+    username => 'myuser',  # Redis 6+ ACL
+    database => 1,
+
+    # Timeouts
+    connect_timeout => 10,
+    request_timeout => 5,
+
+    # Auto-reconnect
+    reconnect       => 1,
+    reconnect_delay => 0.1,
+    reconnect_delay_max => 60,
+
+    # TLS
+    tls => {
+        ca_file   => '/path/to/ca.crt',
+        cert_file => '/path/to/client.crt',
+        key_file  => '/path/to/client.key',
+    },
+
+    # Key prefix (applied to all commands)
+    prefix => 'myapp:',
+);
+```
+
+### Pipelining
+
+```perl
+my $pipe = $redis->pipeline;
+$pipe->set('key1', 'value1');
+$pipe->set('key2', 'value2');
+$pipe->incr('counter');
+$pipe->get('key1');
+
+my $results = await $pipe->execute;
+# $results = ['OK', 'OK', 1, 'value1']
+```
+
+### PubSub
+
+```perl
+# Subscriber
+my $sub = await $redis->subscribe('news', 'alerts');
+while (my $msg = await $sub->next_message) {
+    print "Channel: $msg->{channel}, Message: $msg->{message}\n";
+}
+
+# Publisher (on different connection)
+await $redis->publish('news', 'Breaking news!');
+```
+
+### Transactions
+
+```perl
+my $results = await $redis->multi(async sub {
+    my ($tx) = @_;
+    $tx->set('key', 'value');
+    $tx->incr('counter');
+});
+# $results = ['OK', 1]
+
+# With WATCH for optimistic locking
+my $results = await $redis->watch_multi(['counter'], async sub {
+    my ($tx, $values) = @_;
+    my $current = $values->{counter} // 0;
+    $tx->set('counter', $current + 1);
+});
+# Returns undef if counter was modified by another client
+```
+
+### Connection Pooling
+
+```perl
+use Future::IO::Redis::Pool;
+
+my $pool = Future::IO::Redis::Pool->new(
+    host            => 'localhost',
+    min_connections => 2,
+    max_connections => 10,
+);
+
+await $pool->initialize;
+
+my $result = await $pool->execute(sub {
+    my ($conn) = @_;
+    return $conn->get('key');
+});
+```
+
+### Lua Scripts
+
+```perl
+my $script = $redis->script('return redis.call("get", KEYS[1])');
+my $result = await $script->run(['mykey']);
+
+# Script is cached via EVALSHA
+```
+
+### SCAN Iterators
+
+```perl
+my $iter = $redis->scan_iter(match => 'user:*', count => 100);
+while (my $keys = await $iter->next) {
+    for my $key (@$keys) {
+        print "Found key: $key\n";
+    }
+}
 ```
 
 ## Running Tests
@@ -32,46 +191,33 @@ cpanm Protocol::Redis::XS
 # Start Redis
 docker compose up -d
 
-# Wait for Redis to be ready
-docker compose exec redis redis-cli ping
+# Run all tests
+REDIS_HOST=localhost prove -l t/
 
-# Run tests
-REDIS_HOST=localhost prove -lv t/
+# Run specific test suites
+REDIS_HOST=localhost prove -l t/20-commands/
+REDIS_HOST=localhost prove -l t/99-integration/
+
+# Run benchmarks
+perl scripts/benchmark.pl
 
 # Stop Redis
 docker compose down
 ```
 
-## What This Proves
+## Performance
 
-1. **Future::IO has enough primitives** - `connect`, `ready_for_read`, `ready_for_write` are sufficient for TCP clients
+Benchmarks on localhost with default settings:
 
-2. **Protocol::Redis does the heavy lifting** - RESP parsing/encoding already exists
+| Operation | ops/sec |
+|-----------|---------|
+| Sequential SET | ~2,000 |
+| Sequential GET | ~2,200 |
+| Pipelined SET (batch 100) | ~60,000 |
+| Pipelined GET (batch 100) | ~60,000 |
+| Mixed pipeline | ~64,000 |
 
-3. **Non-blocking is achievable** - Tests prove concurrent operations, timer interleaving, pipelining speedup
-
-4. **~300 lines of code** - Not the 500-800 I estimated; Protocol::Redis makes it trivial
-
-## Key Findings
-
-### What Works
-
-- Basic commands (GET, SET, INCR, lists, etc.)
-- Pipelining (significant speedup)
-- PUB/SUB
-- Multiple concurrent connections
-- Event loop can do other work while waiting
-
-### What's Missing (for production)
-
-- Connection pooling
-- Automatic reconnection
-- TLS/SSL support
-- Cluster support
-- Sentinel support
-- Lua scripting helpers
-- Stream commands (XREAD, etc.)
-- Full command coverage
+Pipelining provides ~30x throughput improvement over sequential commands.
 
 ## Architecture
 
@@ -79,24 +225,24 @@ docker compose down
 ┌─────────────────────────────────────┐
 │         Future::IO::Redis           │
 │  - Connection management            │
-│  - Command methods (get, set, etc.) │
-│  - Pipelining                       │
-│  - PUB/SUB                          │
+│  - Command methods                  │
+│  - Pipelining / Auto-pipeline       │
+│  - PubSub / Transactions            │
+│  - Connection pooling               │
 └─────────────────────────────────────┘
                  │
                  ▼
 ┌─────────────────────────────────────┐
-│         Protocol::Redis(::XS)       │
-│  - RESP parsing                     │
-│  - RESP encoding                    │
+│       Protocol::Redis(::XS)         │
+│  - RESP2 parsing/encoding           │
 │  - Streaming/incremental            │
 └─────────────────────────────────────┘
                  │
                  ▼
 ┌─────────────────────────────────────┐
 │            Future::IO               │
-│  - ready_for_read/write             │
 │  - Event loop abstraction           │
+│  - read/write/connect               │
 └─────────────────────────────────────┘
                  │
                  ▼
@@ -105,12 +251,33 @@ docker compose down
 └─────────────────────────────────────┘
 ```
 
-## Implications for PAGI-Channels
+## Dependencies
 
-This sketch proves `PAGI::Channels::Backend::Redis` is feasible:
+**Required:**
+- Future::IO (0.17+)
+- Future::AsyncAwait
+- Protocol::Redis
 
-1. Use Future::IO::Redis (or similar) for Redis communication
-2. Memory backend for v1 is still right (simpler, no external deps)
-3. Redis backend could be v1.1 or v2 with minimal effort
+**Recommended:**
+- Protocol::Redis::XS (faster parsing)
+- IO::Async (or your preferred event loop)
 
-The bottleneck is NOT Future::IO primitives - it's just that nobody has packaged this yet.
+**Optional:**
+- IO::Socket::SSL (for TLS)
+- OpenTelemetry::SDK (for observability)
+
+## See Also
+
+- [Future::IO](https://metacpan.org/pod/Future::IO) - The underlying async I/O abstraction
+- [Future::AsyncAwait](https://metacpan.org/pod/Future::AsyncAwait) - Async/await syntax
+- [Redis](https://metacpan.org/pod/Redis) - Synchronous Redis client
+- [Net::Async::Redis](https://metacpan.org/pod/Net::Async::Redis) - Another async Redis client
+
+## Author
+
+John Googoo
+
+## License
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
