@@ -94,6 +94,9 @@ async sub init_redis {
 sub get_redis { $redis }
 sub get_pubsub { $pubsub }
 
+# Background selector runner
+my $selector_runner_future;
+
 # Start the selector with the PubSub listener as the main long-running task
 sub _start_selector_runner {
     # Add the broadcast listener as a long-running task
@@ -104,11 +107,11 @@ sub _start_selector_runner {
         gen  => sub { _broadcast_listener() },
     );
 
-    # Run the selector loop per docs: "await $selector->select while 1"
-    # Wrapped in async sub since we're in a sync context
-    (async sub {
-        await $background_selector->select while 1;
-    })->();
+    # Run the selector in the background
+    $selector_runner_future = $background_selector->run->on_fail(sub {
+        my ($err) = @_;
+        warn "[selector] Runner failed: $err";
+    })->retain;
 }
 
 # Add a fire-and-forget background task to the selector
