@@ -130,48 +130,29 @@ sub _start_stats_timer {
         interval => 10,  # Send stats every 10 seconds
         on_tick  => sub {
             return unless %local_sessions;  # Skip if no clients
-            eval {
-                # Fire and forget - broadcast stats to all connected clients
-                _broadcast_stats_sync();
-            };
-            warn "[stats] Timer error: $@" if $@;
+            # Chain async operations: get_stats -> broadcast
+            # Retain the Future to keep it alive
+            get_stats()->then(sub {
+                my ($stats) = @_;
+                my $msg = $JSON->encode({
+                    global  => 1,
+                    payload => {
+                        type         => 'stats',
+                        users_online => $stats->{users_online},
+                        rooms_count  => $stats->{rooms_count},
+                        uptime       => $stats->{uptime},
+                    },
+                });
+                return $redis->publish(BROADCAST_CHANNEL, $msg);
+            })->on_fail(sub {
+                my ($err) = @_;
+                warn "[stats] Timer error: $err";
+            })->retain;
         },
     );
 
     $loop->add($stats_timer);
     $stats_timer->start;
-}
-
-# Synchronous version for timer callback (returns Future, doesn't await)
-sub _broadcast_stats_sync {
-    my $stats = _get_stats_sync();
-
-    my $msg = $JSON->encode({
-        global  => 1,
-        payload => {
-            type         => 'stats',
-            users_online => $stats->{users_online},
-            rooms_count  => $stats->{rooms_count},
-            uptime       => $stats->{uptime},
-        },
-    });
-
-    # Publish to Redis (fire and forget)
-    $redis->publish(BROADCAST_CHANNEL, $msg);
-}
-
-# Synchronous stats (for timer callback)
-sub _get_stats_sync {
-    # For periodic updates, use cached/approximate counts
-    # The actual counts come from Redis but we need async for that
-    # Use local session count as approximation for this worker
-    my $rooms_count = 3;  # Default rooms always exist
-
-    return {
-        users_online => scalar(keys %local_sessions),
-        rooms_count  => $rooms_count,
-        uptime       => int(time() - $server_start_time),
-    };
 }
 
 # Add a fire-and-forget background task to the selector

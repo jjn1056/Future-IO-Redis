@@ -22,7 +22,7 @@ use Future;
 use Future::AsyncAwait;
 
 # PAGI uses IO::Async - configure Future::IO to use it
-use IO::Async::Loop;
+#use IO::Async::Loop;
 use Future::IO;
 Future::IO->load_impl('IOAsync');
 
