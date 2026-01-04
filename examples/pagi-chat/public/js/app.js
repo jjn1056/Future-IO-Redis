@@ -301,6 +301,7 @@
                 }
 
                 updateRoomsList(data.rooms.map(name => ({ name, users: 0 })));
+                updateUsersList(data.users || []);
                 showToast('Session resumed', 'success');
                 break;
 
@@ -416,6 +417,10 @@
             case 'pong':
             case 'server_ping':
                 // Keepalive messages - no action needed
+                break;
+
+            case 'stats':
+                updateStats(data);
                 break;
         }
     }

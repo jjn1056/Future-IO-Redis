@@ -20,7 +20,11 @@ use strict;
 use warnings;
 use Future;
 use Future::AsyncAwait;
+
+# PAGI uses IO::Async - configure Future::IO to use it
+use IO::Async::Loop;
 use Future::IO;
+Future::IO->load_impl('IOAsync');
 
 use File::Basename qw(dirname);
 use lib dirname(__FILE__) . '/lib';
@@ -107,6 +111,13 @@ my $app = with_logging(async sub {
         return await $http_handler->($scope, $receive, $send);
     }
 
+    # SSE not implemented - return 404
+    if ($type eq 'sse') {
+        await $send->({ type => 'http.response.start', status => 404, headers => [] });
+        await $send->({ type => 'http.response.body', body => 'SSE not implemented' });
+        return;
+    }
+
     die "Unsupported scope type: $type";
 });
 
@@ -128,8 +139,9 @@ async sub _handle_lifespan {
     }
 }
 
+# App coderef returned to PAGI (do 'file' returns last expression)
+no warnings 'void';
 $app;
-
 __END__
 
 =head1 NAME

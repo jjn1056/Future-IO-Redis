@@ -898,6 +898,7 @@ async sub hget {
 async sub hgetall {
     my $self = shift;
     my $arr = await $self->command('HGETALL', @_);
+    return {} unless $arr && ref($arr) eq 'ARRAY' && @$arr && @$arr % 2 == 0;
     return { @$arr };  # Convert array to hash
 }
 

@@ -17,6 +17,7 @@ use strict;
 use warnings;
 use Future;
 use Future::AsyncAwait;
+use Future::Selector;
 use Exporter 'import';
 use JSON::MaybeXS;
 use Time::HiRes qw(time);
@@ -33,6 +34,7 @@ our @EXPORT_OK = qw(
     get_stats generate_id sanitize_username sanitize_room_name
     subscribe_broadcasts register_local_session unregister_local_session
     broadcast_to_room add_local_room
+    add_background_task
 );
 
 my $JSON = JSON::MaybeXS->new->utf8->canonical;
@@ -41,6 +43,9 @@ my $JSON = JSON::MaybeXS->new->utf8->canonical;
 my $redis;
 my $pubsub;
 my $pubsub_subscription;
+
+# Background task selector (per-worker)
+my $background_selector;
 
 # Local session callbacks (for this worker only)
 # Redis PubSub delivers to all workers, but we only call callbacks for OUR clients
@@ -51,6 +56,9 @@ use constant {
     SESSION_TTL           => 86400,    # 24 hours
     BROADCAST_CHANNEL     => 'chat:broadcast',
 };
+
+# Track server start time for uptime
+my $server_start_time = time();
 
 # Initialize Redis connections for this worker
 async sub init_redis {
@@ -70,8 +78,9 @@ async sub init_redis {
     await $pubsub_redis->connect;
     $pubsub = await $pubsub_redis->subscribe(BROADCAST_CHANNEL);
 
-    # Start background listener for broadcasts
-    _start_broadcast_listener();
+    # Initialize background task selector and start the runner
+    $background_selector = Future::Selector->new;
+    _start_selector_runner();
 
     # Initialize default rooms
     await add_room('general', 'system');
@@ -85,36 +94,63 @@ async sub init_redis {
 sub get_redis { $redis }
 sub get_pubsub { $pubsub }
 
-# Hold reference to background listener future
-my $broadcast_listener_future;
+# Background selector runner
+my $selector_runner_future;
 
-# Background listener for cross-worker broadcasts
-sub _start_broadcast_listener {
-    $broadcast_listener_future = (async sub {
-        while (my $msg = await $pubsub->next_message) {
-            next unless $msg->{type} eq 'message';
+# Start the selector with the PubSub listener as the main long-running task
+sub _start_selector_runner {
+    # Add the broadcast listener as a long-running task
+    # This follows the Conduit pattern: a while-loop task that keeps the selector alive
+    $background_selector->add(
+        data => 'pubsub-listener',
+        f    => _broadcast_listener(),
+    );
 
-            my $data = eval { $JSON->decode($msg->{data}) };
-            next unless $data;
-
-            my $room_name = $data->{room};
-            my $exclude_id = $data->{exclude_id};
-            my $payload = $data->{payload};
-
-            # Deliver to local sessions in this room
-            for my $session_id (keys %local_sessions) {
-                next if defined $exclude_id && $session_id eq $exclude_id;
-
-                my $local = $local_sessions{$session_id};
-                next unless $local && $local->{rooms}{$room_name} && $local->{send_cb};
-
-                eval { $local->{send_cb}->($payload) };
-            }
-        }
-    })->()->on_fail(sub {
+    # Run the selector in the background
+    $selector_runner_future = $background_selector->run->on_fail(sub {
         my ($err) = @_;
-        warn "Broadcast listener error: $err";
+        warn "[selector] Runner failed: $err";
     })->retain;
+}
+
+# Add a fire-and-forget background task to the selector
+sub add_background_task {
+    my ($future, $description) = @_;
+    $description //= 'background task';
+
+    return unless $background_selector;
+
+    $background_selector->add(
+        data => $description,
+        f    => $future,
+    );
+}
+
+# Long-running broadcast listener (async sub with while loop)
+async sub _broadcast_listener {
+    print STDERR "[pubsub] Worker $$: Broadcast listener started\n";
+
+    while (my $msg = await $pubsub->next_message) {
+        next unless $msg->{type} eq 'message';
+
+        my $data = eval { $JSON->decode($msg->{message}) };
+        next unless $data;
+
+        my $room_name = $data->{room};
+        my $exclude_id = $data->{exclude_id};
+        my $payload = $data->{payload};
+
+        # Deliver to local sessions in this room
+        for my $session_id (keys %local_sessions) {
+            next if defined $exclude_id && $session_id eq $exclude_id;
+
+            my $local = $local_sessions{$session_id};
+            next unless $local && $local->{rooms}{$room_name} && $local->{send_cb};
+
+            eval { $local->{send_cb}->($payload) };
+            warn "[pubsub] Worker $$: send_cb error: $@" if $@;
+        }
+    }
 }
 
 # Register a local session (called when client connects to THIS worker)
@@ -197,10 +233,11 @@ async sub get_session_by_name {
     my ($name) = @_;
 
     # Scan for session with this name (not efficient, but works for demo)
-    my $cursor = 0;
+    my $cursor = "0";
     do {
-        my ($new_cursor, $keys) = await $redis->scan($cursor, MATCH => 'session:*', COUNT => 100);
-        $cursor = $new_cursor;
+        my $result = await $redis->scan($cursor, MATCH => 'session:*', COUNT => 100);
+        $cursor = $result->[0];
+        my $keys = $result->[1] // [];
 
         for my $key (@$keys) {
             my $session = await $redis->hgetall($key);
@@ -209,7 +246,7 @@ async sub get_session_by_name {
                 return $session;
             }
         }
-    } while ($cursor);
+    } while ($cursor && $cursor ne "0");
 
     return;
 }
@@ -262,7 +299,7 @@ async sub set_session_connected {
     await update_session($session_id, { connected => 1, last_seen => time() });
     register_local_session($session_id, $send_cb);
 
-    return get_session($session_id);
+    return await get_session($session_id);
 }
 
 async sub set_session_disconnected {
@@ -445,21 +482,23 @@ async sub get_room_messages {
 async sub get_stats {
     # Count connected sessions
     my $online = 0;
-    my $cursor = 0;
+    my $cursor = "0";
     do {
-        my ($new_cursor, $keys) = await $redis->scan($cursor, MATCH => 'session:*', COUNT => 100);
-        $cursor = $new_cursor;
+        my $result = await $redis->scan($cursor, MATCH => 'session:*', COUNT => 100);
+        $cursor = $result->[0];
+        my $keys = $result->[1] // [];
         for my $key (@$keys) {
             my $connected = await $redis->hget($key, 'connected');
             $online++ if $connected;
         }
-    } while ($cursor);
+    } while ($cursor && $cursor ne "0");
 
     my $rooms = await $redis->smembers("rooms");
 
     return {
         users_online => $online,
         rooms_count  => scalar(@$rooms),
+        uptime       => int(time() - $server_start_time),
     };
 }
 

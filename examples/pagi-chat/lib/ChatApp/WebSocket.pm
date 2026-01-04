@@ -18,10 +18,11 @@ use ChatApp::State qw(
     get_session_by_name set_session_connected set_session_disconnected
     get_room add_room get_all_rooms
     add_user_to_room remove_user_from_room get_room_users
-    add_message get_room_messages
+    add_message get_room_messages get_stats
     sanitize_username sanitize_room_name
     register_local_session unregister_local_session
     broadcast_to_room add_local_room
+    add_background_task
 );
 
 sub handler {
@@ -49,15 +50,23 @@ sub handler {
             # Resume existing session
             await set_session_connected($session_id, sub { $ws->send_json($_[0]) });
 
+            my @rooms = keys %{$session->{rooms}};
+            my $current_room = $rooms[0] // 'general';
+
+            # Get users for the current room
+            my $users = await get_room_users($current_room);
+
             await $ws->send_json({
                 type       => 'resumed',
                 session_id => $session_id,
                 name       => $session->{name},
-                rooms      => [keys %{$session->{rooms}}],
+                rooms      => \@rooms,
+                users      => $users,
+                current_room => $current_room,
             });
 
             # Re-register local room membership
-            for my $room (keys %{$session->{rooms}}) {
+            for my $room (@rooms) {
                 add_local_room($session_id, $room);
             }
         }
@@ -81,28 +90,37 @@ sub handler {
             await _join_room($ws, $session_id, 'general');
         }
 
+        # Send initial stats
+        await _send_stats($ws);
+
         # Handle disconnect
         $ws->on_close(sub {
             my ($code, $reason) = @_;
 
-            # Mark disconnected and cleanup local state
-            set_session_disconnected($session_id);
+            # Mark disconnected and cleanup local state (fire-and-forget)
+            add_background_task(
+                set_session_disconnected($session_id),
+                "disconnect session $session_id"
+            );
 
             # Broadcast leave to rooms (fire-and-forget)
-            (async sub {
-                my $sess = await get_session($session_id);
-                return unless $sess;
+            add_background_task(
+                (async sub {
+                    my $sess = await get_session($session_id);
+                    return unless $sess;
 
-                for my $room_name (keys %{$sess->{rooms}}) {
-                    my $users = await get_room_users($room_name);
-                    await broadcast_to_room($room_name, {
-                        type  => 'user_left',
-                        room  => $room_name,
-                        user  => $sess->{name},
-                        users => $users,
-                    }, $session_id);
-                }
-            })->();
+                    for my $room_name (keys %{$sess->{rooms}}) {
+                        my $users = await get_room_users($room_name);
+                        await broadcast_to_room($room_name, {
+                            type  => 'user_left',
+                            room  => $room_name,
+                            user  => $sess->{name},
+                            users => $users,
+                        }, $session_id);
+                    }
+                })->(),
+                "broadcast leave for $session_id"
+            );
         });
 
         # Message loop
@@ -375,6 +393,18 @@ async sub _send_history {
         type     => 'history',
         room     => $room_name,
         messages => $messages,
+    });
+}
+
+async sub _send_stats {
+    my ($ws) = @_;
+
+    my $stats = await get_stats();
+    await $ws->send_json({
+        type         => 'stats',
+        users_online => $stats->{users_online},
+        rooms_count  => $stats->{rooms_count},
+        uptime       => $stats->{uptime},
     });
 }
 
