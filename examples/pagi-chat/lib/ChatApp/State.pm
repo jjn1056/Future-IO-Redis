@@ -433,8 +433,7 @@ async sub add_user_to_room {
         add_local_room($session_id, $room_name);
     }
 
-    # Add system message
-    await add_message($room_name, 'system', "$session->{name} joined the room", 'system');
+    # Note: join messages are broadcast in real-time via WebSocket, not stored
 }
 
 async sub remove_user_from_room {
@@ -448,10 +447,7 @@ async sub remove_user_from_room {
         delete $session->{rooms}{$room_name};
         await update_session($session_id, { rooms => $session->{rooms} });
         remove_local_room($session_id, $room_name);
-
-        unless ($silent) {
-            await add_message($room_name, 'system', "$session->{name} left the room", 'system');
-        }
+        # Note: leave messages are broadcast in real-time via WebSocket, not stored
     }
 
     # Clean up empty non-default rooms
