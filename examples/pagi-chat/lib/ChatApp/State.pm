@@ -100,10 +100,11 @@ my $selector_runner_future;
 # Start the selector with the PubSub listener as the main long-running task
 sub _start_selector_runner {
     # Add the broadcast listener as a long-running task
-    # This follows the Conduit pattern: a while-loop task that keeps the selector alive
+    # Use gen => to provide a generator that creates the future
+    # (f => expects a completed future, gen => expects a coderef)
     $background_selector->add(
         data => 'pubsub-listener',
-        f    => _broadcast_listener(),
+        gen  => sub { _broadcast_listener() },
     );
 
     # Run the selector in the background
@@ -114,15 +115,22 @@ sub _start_selector_runner {
 }
 
 # Add a fire-and-forget background task to the selector
+# Pass a coderef that returns a future, not the future itself
 sub add_background_task {
-    my ($future, $description) = @_;
+    my ($gen, $description) = @_;
     $description //= 'background task';
 
     return unless $background_selector;
 
+    # gen => expects a coderef that generates futures
+    # It will be called once, and again if the future completes (until it returns undef)
+    my $called = 0;
     $background_selector->add(
         data => $description,
-        f    => $future,
+        gen  => sub {
+            return undef if $called++;  # One-shot: only generate once
+            return ref($gen) eq 'CODE' ? $gen->() : $gen;
+        },
     );
 }
 
