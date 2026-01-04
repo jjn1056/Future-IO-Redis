@@ -22,6 +22,8 @@ use Exporter 'import';
 use JSON::MaybeXS;
 use Time::HiRes qw(time);
 use Scalar::Util qw(weaken);
+use IO::Async::Loop;
+use IO::Async::Timer::Periodic;
 
 our @EXPORT_OK = qw(
     init_redis get_redis get_pubsub
@@ -82,6 +84,9 @@ async sub init_redis {
     $background_selector = Future::Selector->new;
     _start_selector_runner();
 
+    # Start periodic stats timer (every 10 seconds)
+    _start_stats_timer();
+
     # Initialize default rooms
     await add_room('general', 'system');
     await add_room('random', 'system');
@@ -96,6 +101,9 @@ sub get_pubsub { $pubsub }
 
 # Background selector runner
 my $selector_runner_future;
+
+# Periodic stats timer
+my $stats_timer;
 
 # Start the selector with the PubSub listener as the main long-running task
 sub _start_selector_runner {
@@ -112,6 +120,58 @@ sub _start_selector_runner {
         my ($err) = @_;
         warn "[selector] Runner failed: $err";
     })->retain;
+}
+
+# Start periodic stats timer using IO::Async
+sub _start_stats_timer {
+    my $loop = IO::Async::Loop->new;
+
+    $stats_timer = IO::Async::Timer::Periodic->new(
+        interval => 10,  # Send stats every 10 seconds
+        on_tick  => sub {
+            return unless %local_sessions;  # Skip if no clients
+            eval {
+                # Fire and forget - broadcast stats to all connected clients
+                _broadcast_stats_sync();
+            };
+            warn "[stats] Timer error: $@" if $@;
+        },
+    );
+
+    $loop->add($stats_timer);
+    $stats_timer->start;
+}
+
+# Synchronous version for timer callback (returns Future, doesn't await)
+sub _broadcast_stats_sync {
+    my $stats = _get_stats_sync();
+
+    my $msg = $JSON->encode({
+        global  => 1,
+        payload => {
+            type         => 'stats',
+            users_online => $stats->{users_online},
+            rooms_count  => $stats->{rooms_count},
+            uptime       => $stats->{uptime},
+        },
+    });
+
+    # Publish to Redis (fire and forget)
+    $redis->publish(BROADCAST_CHANNEL, $msg);
+}
+
+# Synchronous stats (for timer callback)
+sub _get_stats_sync {
+    # For periodic updates, use cached/approximate counts
+    # The actual counts come from Redis but we need async for that
+    # Use local session count as approximation for this worker
+    my $rooms_count = 3;  # Default rooms always exist
+
+    return {
+        users_online => scalar(keys %local_sessions),
+        rooms_count  => $rooms_count,
+        uptime       => int(time() - $server_start_time),
+    };
 }
 
 # Add a fire-and-forget background task to the selector
