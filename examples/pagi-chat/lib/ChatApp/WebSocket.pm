@@ -21,7 +21,7 @@ use ChatApp::State qw(
     add_message get_room_messages get_stats
     sanitize_username sanitize_room_name
     register_local_session unregister_local_session
-    broadcast_to_room add_local_room
+    broadcast_to_room broadcast_global add_local_room
     add_background_task
 );
 
@@ -164,6 +164,9 @@ async sub _handle_message {
         await update_session($session_id, { last_seen => time() });
         await $ws->send_json({ type => 'pong', ts => $msg->{ts} });
     }
+    elsif ($type eq 'typing') {
+        await _handle_typing($ws, $session_id, $msg);
+    }
 }
 
 async sub _handle_chat_message {
@@ -286,6 +289,9 @@ async sub _join_room {
         user  => $session->{name},
         users => $users,
     }, $session_id);
+
+    # Broadcast updated stats to all users
+    await _broadcast_stats();
 }
 
 async sub _leave_room {
@@ -321,6 +327,27 @@ async sub _leave_room {
         user  => $session->{name},
         users => $users,
     });
+
+    # Broadcast updated stats to all users
+    await _broadcast_stats();
+}
+
+async sub _handle_typing {
+    my ($ws, $session_id, $msg) = @_;
+
+    my $session = await get_session($session_id) or return;
+    my $room_name = $msg->{room} // 'general';
+    my $is_typing = $msg->{typing} ? 1 : 0;
+
+    # Only broadcast if user is in the room
+    return unless $session->{rooms}{$room_name};
+
+    await broadcast_to_room($room_name, {
+        type   => 'typing',
+        room   => $room_name,
+        user   => $session->{name},
+        typing => $is_typing,
+    }, $session_id);
 }
 
 async sub _handle_private_message {
@@ -401,6 +428,16 @@ async sub _send_stats {
 
     my $stats = await get_stats();
     await $ws->send_json({
+        type         => 'stats',
+        users_online => $stats->{users_online},
+        rooms_count  => $stats->{rooms_count},
+        uptime       => $stats->{uptime},
+    });
+}
+
+async sub _broadcast_stats {
+    my $stats = await get_stats();
+    await broadcast_global({
         type         => 'stats',
         users_online => $stats->{users_online},
         rooms_count  => $stats->{rooms_count},

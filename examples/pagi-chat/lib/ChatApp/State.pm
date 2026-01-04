@@ -33,7 +33,7 @@ our @EXPORT_OK = qw(
     add_message get_room_messages
     get_stats generate_id sanitize_username sanitize_room_name
     subscribe_broadcasts register_local_session unregister_local_session
-    broadcast_to_room add_local_room
+    broadcast_to_room broadcast_global add_local_room
     add_background_task
 );
 
@@ -136,19 +136,32 @@ async sub _broadcast_listener {
         my $data = eval { $JSON->decode($msg->{message}) };
         next unless $data;
 
-        my $room_name = $data->{room};
-        my $exclude_id = $data->{exclude_id};
         my $payload = $data->{payload};
 
-        # Deliver to local sessions in this room
-        for my $session_id (keys %local_sessions) {
-            next if defined $exclude_id && $session_id eq $exclude_id;
+        # Global broadcast - deliver to ALL local sessions
+        if ($data->{global}) {
+            for my $session_id (keys %local_sessions) {
+                my $local = $local_sessions{$session_id};
+                next unless $local && $local->{send_cb};
 
-            my $local = $local_sessions{$session_id};
-            next unless $local && $local->{rooms}{$room_name} && $local->{send_cb};
+                eval { $local->{send_cb}->($payload) };
+                warn "[pubsub] Worker $$: send_cb error: $@" if $@;
+            }
+        }
+        # Room broadcast - deliver to local sessions in this room
+        else {
+            my $room_name = $data->{room};
+            my $exclude_id = $data->{exclude_id};
 
-            eval { $local->{send_cb}->($payload) };
-            warn "[pubsub] Worker $$: send_cb error: $@" if $@;
+            for my $session_id (keys %local_sessions) {
+                next if defined $exclude_id && $session_id eq $exclude_id;
+
+                my $local = $local_sessions{$session_id};
+                next unless $local && $local->{rooms}{$room_name} && $local->{send_cb};
+
+                eval { $local->{send_cb}->($payload) };
+                warn "[pubsub] Worker $$: send_cb error: $@" if $@;
+            }
         }
     }
 }
@@ -185,6 +198,18 @@ async sub broadcast_to_room {
     my $msg = $JSON->encode({
         room       => $room_name,
         exclude_id => $exclude_id,
+        payload    => $payload,
+    });
+
+    await $redis->publish(BROADCAST_CHANNEL, $msg);
+}
+
+# Broadcast to all connected users globally via Redis PubSub
+async sub broadcast_global {
+    my ($payload) = @_;
+
+    my $msg = $JSON->encode({
+        global     => 1,
         payload    => $payload,
     });
 
@@ -376,11 +401,15 @@ async sub get_all_rooms {
     my $names = await $redis->smembers("rooms");
     my %rooms;
 
+    # Defensive: ensure $names is an array ref
+    return \%rooms unless $names && ref($names) eq 'ARRAY';
+
     for my $name (@$names) {
-        my $user_count = await $redis->scard("room:$name:users");
+        my $members = await $redis->smembers("room:$name:users");
+        $members = [] unless $members && ref($members) eq 'ARRAY';
         $rooms{$name} = {
             name  => $name,
-            users => { map { $_ => 1 } @{await $redis->smembers("room:$name:users")} },
+            users => { map { $_ => 1 } @$members },
         };
     }
 
@@ -438,6 +467,9 @@ async sub get_room_users {
     my $user_ids = await $redis->smembers("room:$room_name:users");
     my @users;
 
+    # Defensive: ensure $user_ids is an array ref
+    return \@users unless $user_ids && ref($user_ids) eq 'ARRAY';
+
     for my $session_id (@$user_ids) {
         my $session = await get_session($session_id);
         next unless $session && $session->{connected};
@@ -494,6 +526,7 @@ async sub get_stats {
     } while ($cursor && $cursor ne "0");
 
     my $rooms = await $redis->smembers("rooms");
+    $rooms = [] unless $rooms && ref($rooms) eq 'ARRAY';
 
     return {
         users_online => $online,
