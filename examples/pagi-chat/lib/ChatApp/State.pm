@@ -120,7 +120,7 @@ sub _start_selector_runner {
                 }
             }
         }
-    })->()->retain;
+    })->();
 }
 
 # Add a fire-and-forget background task to the selector
