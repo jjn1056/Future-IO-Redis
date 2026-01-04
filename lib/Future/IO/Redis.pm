@@ -333,6 +333,12 @@ async sub _redis_handshake {
     }
 }
 
+# Check if connected to Redis
+sub is_connected {
+    my ($self) = @_;
+    return $self->{connected} ? 1 : 0;
+}
+
 # Disconnect from Redis
 sub disconnect {
     my ($self, $reason) = @_;
