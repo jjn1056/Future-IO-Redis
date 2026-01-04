@@ -11,7 +11,7 @@ use Future::AsyncAwait;
 use Future::IO 0.17;  # Need read/write methods
 use Socket qw(pack_sockaddr_in inet_aton AF_INET SOCK_STREAM);
 use IO::Socket::INET;
-use Time::HiRes qw(time);
+use Time::HiRes ();
 
 # Error classes
 use Future::IO::Redis::Error::Connection;
@@ -506,7 +506,7 @@ sub _calculate_deadline {
     if ($cmd =~ /^(BLPOP|BRPOP|BLMOVE|BRPOPLPUSH|BLMPOP|BZPOPMIN|BZPOPMAX|BZMPOP)$/) {
         # Last arg is the timeout for these commands
         my $server_timeout = $args[-1] // 0;
-        return time() + $server_timeout + $self->{blocking_timeout_buffer};
+        return Time::HiRes::time() + $server_timeout + $self->{blocking_timeout_buffer};
     }
 
     if ($cmd =~ /^(XREAD|XREADGROUP)$/) {
@@ -514,13 +514,13 @@ sub _calculate_deadline {
         for my $i (0 .. $#args - 1) {
             if (uc($args[$i]) eq 'BLOCK') {
                 my $block_ms = $args[$i + 1] // 0;
-                return time() + ($block_ms / 1000) + $self->{blocking_timeout_buffer};
+                return Time::HiRes::time() + ($block_ms / 1000) + $self->{blocking_timeout_buffer};
             }
         }
     }
 
     # Normal commands use request_timeout
-    return time() + $self->{request_timeout};
+    return Time::HiRes::time() + $self->{request_timeout};
 }
 
 # Non-blocking TLS upgrade
@@ -559,11 +559,11 @@ async sub _tls_upgrade {
         );
 
     # Drive handshake with non-blocking loop
-    my $deadline = time() + $self->{connect_timeout};
+    my $deadline = Time::HiRes::time() + $self->{connect_timeout};
 
     while (1) {
         # Check timeout
-        if (time() >= $deadline) {
+        if (Time::HiRes::time() >= $deadline) {
             die Future::IO::Redis::Error::Timeout->new(
                 message => "TLS handshake timed out",
                 timeout => $self->{connect_timeout},
@@ -579,7 +579,7 @@ async sub _tls_upgrade {
         }
 
         # Check what the handshake needs
-        my $remaining = $deadline - time();
+        my $remaining = $deadline - Time::HiRes::time();
         $remaining = 0.1 if $remaining <= 0;
 
         if ($IO::Socket::SSL::SSL_ERROR == IO::Socket::SSL::SSL_ERROR_WANT_READ()) {
@@ -693,7 +693,7 @@ async sub command {
 
     # Telemetry: start span and log send
     my $span_context;
-    my $start_time = time();
+    my $start_time = Time::HiRes::time();
     if ($self->{_telemetry}) {
         $span_context = $self->{_telemetry}->start_command_span($cmd, @args);
         $self->{_telemetry}->log_send($cmd, @args);
@@ -719,7 +719,7 @@ async sub command {
 
     # Telemetry: log result and end span
     if ($self->{_telemetry}) {
-        my $elapsed_ms = (time() - $start_time) * 1000;
+        my $elapsed_ms = (Time::HiRes::time() - $start_time) * 1000;
         if ($error) {
             $self->{_telemetry}->log_error($error);
         }
@@ -744,7 +744,7 @@ async sub _read_response_with_deadline {
 
     # Read until we get a complete message
     while (1) {
-        my $remaining = $deadline - time();
+        my $remaining = $deadline - Time::HiRes::time();
 
         if ($remaining <= 0) {
             $self->_reset_connection;
@@ -1346,7 +1346,7 @@ async sub _execute_pipeline {
 
     return [] unless @$commands;
 
-    my $start_time = time();
+    my $start_time = Time::HiRes::time();
 
     # Send all commands
     my $data = '';
@@ -1376,7 +1376,7 @@ async sub _execute_pipeline {
 
     # Telemetry: record pipeline metrics
     if ($self->{_telemetry}) {
-        my $elapsed_ms = (time() - $start_time) * 1000;
+        my $elapsed_ms = (Time::HiRes::time() - $start_time) * 1000;
         $self->{_telemetry}->record_pipeline($count, $elapsed_ms);
     }
 

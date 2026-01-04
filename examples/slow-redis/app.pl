@@ -94,9 +94,10 @@ async sub _handle_slow_request {
     # This is the key: the event loop can handle other requests during this sleep
     await Future::IO->sleep(1);
 
-    # Get Redis server time
+    # Get Redis server time (returns hashref with seconds/microseconds)
     my $time = await $r->time;
-    my ($seconds, $microseconds) = @$time;
+    my $seconds = $time->{seconds};
+    my $microseconds = $time->{microseconds};
 
     my $elapsed = sprintf("%.3f", time() - $start);
 
@@ -139,7 +140,8 @@ async sub _handle_fast_request {
 
     my $r = await get_redis();
     my $time = await $r->time;
-    my ($seconds, $microseconds) = @$time;
+    my $seconds = $time->{seconds};
+    my $microseconds = $time->{microseconds};
 
     my $elapsed = sprintf("%.6f", time() - $start);
 
