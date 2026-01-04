@@ -1,4 +1,4 @@
-package Future::IO::Redis::Error::Protocol;
+package Async::Redis::Error::Protocol;
 
 use strict;
 use warnings;
@@ -6,7 +6,7 @@ use 5.018;
 
 our $VERSION = '0.001';
 
-use parent 'Future::IO::Redis::Error';
+use parent 'Async::Redis::Error';
 
 sub data { shift->{data} }
 
@@ -16,7 +16,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Error::Protocol - Protocol violation exception
+Async::Redis::Error::Protocol - Protocol violation exception
 
 =head1 DESCRIPTION
 

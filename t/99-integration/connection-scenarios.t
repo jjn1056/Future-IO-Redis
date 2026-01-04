@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use Test2::V0;
 use Test::Lib;
-use Test::Future::IO::Redis qw(init_loop skip_without_redis await_f cleanup_keys run);
+use Test::Async::Redis qw(init_loop skip_without_redis await_f cleanup_keys run);
 
 my $loop = init_loop();
 
@@ -12,7 +12,7 @@ SKIP: {
     my $redis = skip_without_redis();
 
     subtest 'reconnect after disconnect' => sub {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $r->connect };
@@ -33,7 +33,7 @@ SKIP: {
 
     subtest 'multiple sequential connections' => sub {
         for my $i (1..5) {
-            my $r = Future::IO::Redis->new(
+            my $r = Async::Redis->new(
                 host => $ENV{REDIS_HOST} // 'localhost',
             );
             run { $r->connect };
@@ -51,7 +51,7 @@ SKIP: {
     };
 
     subtest 'connection with timeout' => sub {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 5,
             read_timeout => 5,
@@ -65,7 +65,7 @@ SKIP: {
     };
 
     subtest 'database selection' => sub {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             database => 1,
         );
@@ -75,7 +75,7 @@ SKIP: {
         run { $r->set('dbtest:key', 'in_db1') };
 
         # Connect to database 0 and verify key doesn't exist
-        my $r0 = Future::IO::Redis->new(
+        my $r0 = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             database => 0,
         );
@@ -95,7 +95,7 @@ SKIP: {
 
     subtest 'rapid connect/disconnect cycles' => sub {
         for my $i (1..10) {
-            my $r = Future::IO::Redis->new(
+            my $r = Async::Redis->new(
                 host => $ENV{REDIS_HOST} // 'localhost',
             );
             run { $r->connect };

@@ -1,4 +1,4 @@
-# Future::IO::Redis Phase 6: PubSub Refinement & Connection Pool
+# Async::Redis Phase 6: PubSub Refinement & Connection Pool
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -45,20 +45,20 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time);
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $publisher = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
     skip "Redis not available: $@", 1 unless $publisher;
 
-    my $subscriber = Future::IO::Redis->new(host => 'localhost');
+    my $subscriber = Async::Redis->new(host => 'localhost');
     $loop->await($subscriber->connect);
 
     subtest 'basic subscribe and receive' => sub {
@@ -69,7 +69,7 @@ SKIP: {
         my $sub_future = (async sub {
             my $sub = await $subscriber->subscribe('test:sub:basic');
 
-            ok($sub->isa('Future::IO::Redis::Subscription'), 'returns Subscription object');
+            ok($sub->isa('Async::Redis::Subscription'), 'returns Subscription object');
             is_deeply([$sub->channels], ['test:sub:basic'], 'tracks subscribed channels');
 
             # Receive 3 messages
@@ -180,7 +180,7 @@ Expected: FAIL (Subscription.pm not fully implemented)
 
 ```perl
 # lib/Future/IO/Redis/Subscription.pm
-package Future::IO::Redis::Subscription;
+package Async::Redis::Subscription;
 
 use strict;
 use warnings;
@@ -438,7 +438,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Subscription - PubSub subscription handler
+Async::Redis::Subscription - PubSub subscription handler
 
 =head1 SYNOPSIS
 
@@ -468,12 +468,12 @@ Manages Redis PubSub subscriptions with async iterator pattern.
 =cut
 ```
 
-### Step 5: Update Future::IO::Redis with pubsub improvements
+### Step 5: Update Async::Redis with pubsub improvements
 
 Edit `lib/Future/IO/Redis.pm`:
 
 ```perl
-use Future::IO::Redis::Subscription;
+use Async::Redis::Subscription;
 
 # In new(), add:
 #   in_pubsub       => 0,
@@ -486,7 +486,7 @@ sub in_pubsub { shift->{in_pubsub} }
 async sub subscribe {
     my ($self, @channels) = @_;
 
-    die Future::IO::Redis::Error::Disconnected->new(
+    die Async::Redis::Error::Disconnected->new(
         message => "Not connected",
     ) unless $self->{connected};
 
@@ -494,7 +494,7 @@ async sub subscribe {
         if $self->{in_pubsub} && !$self->{_subscription};
 
     # Create or reuse subscription
-    my $sub = $self->{_subscription} //= Future::IO::Redis::Subscription->new(redis => $self);
+    my $sub = $self->{_subscription} //= Async::Redis::Subscription->new(redis => $self);
 
     # Send SUBSCRIBE command
     await $self->_send_command('SUBSCRIBE', @channels);
@@ -518,11 +518,11 @@ async sub subscribe {
 async sub psubscribe {
     my ($self, @patterns) = @_;
 
-    die Future::IO::Redis::Error::Disconnected->new(
+    die Async::Redis::Error::Disconnected->new(
         message => "Not connected",
     ) unless $self->{connected};
 
-    my $sub = $self->{_subscription} //= Future::IO::Redis::Subscription->new(redis => $self);
+    my $sub = $self->{_subscription} //= Async::Redis::Subscription->new(redis => $self);
 
     await $self->_send_command('PSUBSCRIBE', @patterns);
 
@@ -541,11 +541,11 @@ async sub psubscribe {
 async sub ssubscribe {
     my ($self, @channels) = @_;
 
-    die Future::IO::Redis::Error::Disconnected->new(
+    die Async::Redis::Error::Disconnected->new(
         message => "Not connected",
     ) unless $self->{connected};
 
-    my $sub = $self->{_subscription} //= Future::IO::Redis::Subscription->new(redis => $self);
+    my $sub = $self->{_subscription} //= Async::Redis::Subscription->new(redis => $self);
 
     await $self->_send_command('SSUBSCRIBE', @channels);
 
@@ -633,7 +633,7 @@ sub _start_pubsub_pump {
 async sub command {
     my ($self, @args) = @_;
 
-    die Future::IO::Redis::Error::Disconnected->new(
+    die Async::Redis::Error::Disconnected->new(
         message => "Not connected",
     ) unless $self->{connected};
 
@@ -641,7 +641,7 @@ async sub command {
     if ($self->{in_pubsub}) {
         my $cmd = uc($args[0] // '');
         unless ($cmd =~ /^(SUBSCRIBE|UNSUBSCRIBE|PSUBSCRIBE|PUNSUBSCRIBE|SSUBSCRIBE|SUNSUBSCRIBE|PING|QUIT)$/) {
-            die Future::IO::Redis::Error::Protocol->new(
+            die Async::Redis::Error::Protocol->new(
                 message => "Cannot execute '$cmd' on connection in PubSub mode",
             );
         }
@@ -671,19 +671,19 @@ Expected: PASS
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $publisher = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
     skip "Redis not available: $@", 1 unless $publisher;
 
-    my $subscriber = Future::IO::Redis->new(host => 'localhost');
+    my $subscriber = Async::Redis->new(host => 'localhost');
     $loop->await($subscriber->connect);
 
     subtest 'psubscribe receives messages matching pattern' => sub {
@@ -693,7 +693,7 @@ SKIP: {
         my $sub_future = (async sub {
             my $sub = await $subscriber->psubscribe('news:*');
 
-            ok($sub->isa('Future::IO::Redis::Subscription'), 'returns Subscription');
+            ok($sub->isa('Async::Redis::Subscription'), 'returns Subscription');
             is_deeply([$sub->patterns], ['news:*'], 'tracks subscribed patterns');
 
             for my $i (1..3) {
@@ -721,7 +721,7 @@ SKIP: {
     };
 
     subtest 'psubscribe with multiple patterns' => sub {
-        my $sub2 = Future::IO::Redis->new(host => 'localhost');
+        my $sub2 = Async::Redis->new(host => 'localhost');
         $loop->await($sub2->connect);
 
         my @received;
@@ -757,7 +757,7 @@ SKIP: {
     };
 
     subtest 'pattern does not match non-matching channels' => sub {
-        my $sub3 = Future::IO::Redis->new(host => 'localhost');
+        my $sub3 = Async::Redis->new(host => 'localhost');
         $loop->await($sub3->connect);
 
         my $received_count = 0;
@@ -804,19 +804,19 @@ Expected: PASS
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $publisher = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
     skip "Redis not available: $@", 1 unless $publisher;
 
-    my $subscriber = Future::IO::Redis->new(host => 'localhost');
+    my $subscriber = Async::Redis->new(host => 'localhost');
     $loop->await($subscriber->connect);
 
     subtest 'partial unsubscribe' => sub {
@@ -836,7 +836,7 @@ SKIP: {
     };
 
     subtest 'full unsubscribe exits pubsub mode' => sub {
-        my $sub2 = Future::IO::Redis->new(host => 'localhost');
+        my $sub2 = Async::Redis->new(host => 'localhost');
         $loop->await($sub2->connect);
 
         my $sub = $loop->await($sub2->subscribe('temp:chan'));
@@ -856,7 +856,7 @@ SKIP: {
     };
 
     subtest 'punsubscribe from patterns' => sub {
-        my $sub3 = Future::IO::Redis->new(host => 'localhost');
+        my $sub3 = Async::Redis->new(host => 'localhost');
         $loop->await($sub3->connect);
 
         my $sub = $loop->await($sub3->psubscribe('pat:*', 'log:*'));
@@ -872,7 +872,7 @@ SKIP: {
     };
 
     subtest 'unsubscribe stops receiving messages' => sub {
-        my $sub4 = Future::IO::Redis->new(host => 'localhost');
+        my $sub4 = Async::Redis->new(host => 'localhost');
         $loop->await($sub4->connect);
 
         my @received;
@@ -922,13 +922,13 @@ Expected: PASS
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $publisher = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -941,7 +941,7 @@ SKIP: {
     skip "Sharded PubSub requires Redis 7.0+, got $version", 1
         unless $major >= 7;
 
-    my $subscriber = Future::IO::Redis->new(host => 'localhost');
+    my $subscriber = Async::Redis->new(host => 'localhost');
     $loop->await($subscriber->connect);
 
     subtest 'sharded subscribe (SSUBSCRIBE)' => sub {
@@ -974,7 +974,7 @@ SKIP: {
     };
 
     subtest 'sharded unsubscribe (SUNSUBSCRIBE)' => sub {
-        my $sub2 = Future::IO::Redis->new(host => 'localhost');
+        my $sub2 = Async::Redis->new(host => 'localhost');
         $loop->await($sub2->connect);
 
         my $sub = $loop->await($sub2->ssubscribe('sharded:a', 'sharded:b'));
@@ -990,7 +990,7 @@ SKIP: {
     };
 
     subtest 'mixed regular and sharded subscriptions' => sub {
-        my $sub3 = Future::IO::Redis->new(host => 'localhost');
+        my $sub3 = Async::Redis->new(host => 'localhost');
         $loop->await($sub3->connect);
 
         # Subscribe to regular channel
@@ -1020,20 +1020,20 @@ done_testing;
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $publisher = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
     skip "Redis not available: $@", 1 unless $publisher;
 
     subtest 'subscription tracks channels for replay' => sub {
-        my $subscriber = Future::IO::Redis->new(host => 'localhost');
+        my $subscriber = Async::Redis->new(host => 'localhost');
         $loop->await($subscriber->connect);
 
         my $sub = $loop->await($subscriber->subscribe('chan:a', 'chan:b'));
@@ -1053,7 +1053,7 @@ SKIP: {
     };
 
     subtest 'reconnect replays subscriptions' => sub {
-        my $subscriber = Future::IO::Redis->new(
+        my $subscriber = Async::Redis->new(
             host => 'localhost',
             reconnect => 1,
             reconnect_delay => 0.1,
@@ -1103,19 +1103,19 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $publisher = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
     skip "Redis not available: $@", 1 unless $publisher;
 
-    my $subscriber = Future::IO::Redis->new(host => 'localhost');
+    my $subscriber = Async::Redis->new(host => 'localhost');
     $loop->await($subscriber->connect);
 
     subtest 'subscribe to many channels at once' => sub {
@@ -1156,7 +1156,7 @@ SKIP: {
     };
 
     subtest 'add channels to existing subscription' => sub {
-        my $sub2 = Future::IO::Redis->new(host => 'localhost');
+        my $sub2 = Async::Redis->new(host => 'localhost');
         $loop->await($sub2->connect);
 
         # Initial subscription
@@ -1290,7 +1290,7 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis::Pool;
+use Async::Redis::Pool;
 use Time::HiRes qw(time);
 
 my $loop = IO::Async::Loop->new;
@@ -1298,8 +1298,8 @@ my $loop = IO::Async::Loop->new;
 SKIP: {
     # Verify Redis is available
     my $test_redis = eval {
-        require Future::IO::Redis;
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        require Async::Redis;
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -1307,7 +1307,7 @@ SKIP: {
     $test_redis->disconnect;
 
     subtest 'pool creation' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
             min  => 2,
             max  => 5,
@@ -1319,7 +1319,7 @@ SKIP: {
     };
 
     subtest 'acquire and release' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
             min  => 1,
             max  => 3,
@@ -1327,7 +1327,7 @@ SKIP: {
 
         my $conn = $loop->await($pool->acquire);
         ok($conn, 'acquired connection');
-        ok($conn->isa('Future::IO::Redis'), 'connection is Redis object');
+        ok($conn->isa('Async::Redis'), 'connection is Redis object');
 
         # Use connection
         my $result = $loop->await($conn->ping);
@@ -1342,7 +1342,7 @@ SKIP: {
     };
 
     subtest 'acquire returns same connection' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
             min  => 1,
             max  => 3,
@@ -1361,7 +1361,7 @@ SKIP: {
     };
 
     subtest 'multiple acquires up to max' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
             min  => 0,
             max  => 3,
@@ -1388,7 +1388,7 @@ SKIP: {
     };
 
     subtest 'acquire blocks when pool exhausted' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host            => 'localhost',
             max             => 1,
             acquire_timeout => 1,
@@ -1413,7 +1413,7 @@ SKIP: {
     };
 
     subtest 'non-blocking verification' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
             min  => 2,
             max  => 5,
@@ -1453,7 +1453,7 @@ Expected: FAIL (Pool.pm not implemented)
 
 ```perl
 # lib/Future/IO/Redis/Pool.pm
-package Future::IO::Redis::Pool;
+package Async::Redis::Pool;
 
 use strict;
 use warnings;
@@ -1462,8 +1462,8 @@ use 5.018;
 use Future;
 use Future::AsyncAwait;
 use Future::IO;
-use Future::IO::Redis;
-use Future::IO::Redis::Error::Timeout;
+use Async::Redis;
+use Async::Redis::Error::Timeout;
 
 our $VERSION = '0.001';
 
@@ -1471,7 +1471,7 @@ sub new {
     my ($class, %args) = @_;
 
     my $self = bless {
-        # Connection params (passed to Future::IO::Redis->new)
+        # Connection params (passed to Async::Redis->new)
         host     => $args{host} // 'localhost',
         port     => $args{port} // 6379,
         password => $args{password},
@@ -1557,7 +1557,7 @@ async sub acquire {
     my ($result) = await Future->wait_any(
         $waiter,
         $timeout_future->then(sub {
-            Future->fail(Future::IO::Redis::Error::Timeout->new(
+            Future->fail(Async::Redis::Error::Timeout->new(
                 message => "Acquire timed out after $self->{acquire_timeout}s",
                 timeout => $self->{acquire_timeout},
             ));
@@ -1567,7 +1567,7 @@ async sub acquire {
     # If waiter was cancelled by timeout, remove from queue
     if (!$waiter->is_done) {
         @{$self->{_waiters}} = grep { $_ != $waiter } @{$self->{_waiters}};
-        die $result if ref $result && $result->isa('Future::IO::Redis::Error');
+        die $result if ref $result && $result->isa('Async::Redis::Error');
     }
 
     return $result;
@@ -1637,7 +1637,7 @@ async sub _create_connection {
     $conn_args{tls}      = $self->{tls}      if $self->{tls};
     $conn_args{uri}      = $self->{uri}      if $self->{uri};
 
-    my $conn = Future::IO::Redis->new(%conn_args);
+    my $conn = Async::Redis->new(%conn_args);
     await $conn->connect;
 
     $self->{_total_created}++;
@@ -1796,11 +1796,11 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Pool - Connection pool for Future::IO::Redis
+Async::Redis::Pool - Connection pool for Async::Redis
 
 =head1 SYNOPSIS
 
-    my $pool = Future::IO::Redis::Pool->new(
+    my $pool = Async::Redis::Pool->new(
         host => 'localhost',
         min  => 2,
         max  => 10,
@@ -1853,7 +1853,7 @@ Always prefer C<with()> over manual acquire/release:
 =cut
 ```
 
-### Step 5: Add is_dirty and related methods to Future::IO::Redis
+### Step 5: Add is_dirty and related methods to Async::Redis
 
 Edit `lib/Future/IO/Redis.pm` to add connection state tracking:
 
@@ -1894,21 +1894,21 @@ Expected: PASS
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis::Pool;
+use Async::Redis::Pool;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $test_redis = eval {
-        require Future::IO::Redis;
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        require Async::Redis;
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
     skip "Redis not available: $@", 1 unless $test_redis;
     $test_redis->disconnect;
 
-    my $pool = Future::IO::Redis::Pool->new(
+    my $pool = Async::Redis::Pool->new(
         host => 'localhost',
         min  => 1,
         max  => 3,
@@ -2024,14 +2024,14 @@ done_testing;
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis::Pool;
+use Async::Redis::Pool;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $test_redis = eval {
-        require Future::IO::Redis;
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        require Async::Redis;
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -2039,7 +2039,7 @@ SKIP: {
     $test_redis->disconnect;
 
     subtest 'is_dirty detects in_multi' => sub {
-        my $pool = Future::IO::Redis::Pool->new(host => 'localhost');
+        my $pool = Async::Redis::Pool->new(host => 'localhost');
 
         my $conn = $loop->await($pool->acquire);
         ok(!$conn->is_dirty, 'connection starts clean');
@@ -2058,7 +2058,7 @@ SKIP: {
     };
 
     subtest 'is_dirty detects watching' => sub {
-        my $pool = Future::IO::Redis::Pool->new(host => 'localhost');
+        my $pool = Async::Redis::Pool->new(host => 'localhost');
 
         my $conn = $loop->await($pool->acquire);
         $loop->await($conn->watch('dirty:key'));
@@ -2073,7 +2073,7 @@ SKIP: {
     };
 
     subtest 'is_dirty detects in_pubsub' => sub {
-        my $pool = Future::IO::Redis::Pool->new(host => 'localhost');
+        my $pool = Async::Redis::Pool->new(host => 'localhost');
 
         my $conn = $loop->await($pool->acquire);
         $loop->await($conn->subscribe('dirty:channel'));
@@ -2088,7 +2088,7 @@ SKIP: {
     };
 
     subtest 'clean connection reused' => sub {
-        my $pool = Future::IO::Redis::Pool->new(host => 'localhost');
+        my $pool = Async::Redis::Pool->new(host => 'localhost');
 
         my $conn1 = $loop->await($pool->acquire);
         my $id1 = "$conn1";
@@ -2105,7 +2105,7 @@ SKIP: {
     };
 
     subtest 'properly completed transaction is clean' => sub {
-        my $pool = Future::IO::Redis::Pool->new(host => 'localhost');
+        my $pool = Async::Redis::Pool->new(host => 'localhost');
 
         my $conn = $loop->await($pool->acquire);
         $loop->await($conn->multi_start);
@@ -2131,7 +2131,7 @@ SKIP: {
     };
 
     subtest 'discard clears in_multi' => sub {
-        my $pool = Future::IO::Redis::Pool->new(host => 'localhost');
+        my $pool = Async::Redis::Pool->new(host => 'localhost');
 
         my $conn = $loop->await($pool->acquire);
         $loop->await($conn->multi_start);
@@ -2145,7 +2145,7 @@ SKIP: {
     };
 
     subtest 'unwatch clears watching' => sub {
-        my $pool = Future::IO::Redis::Pool->new(host => 'localhost');
+        my $pool = Async::Redis::Pool->new(host => 'localhost');
 
         my $conn = $loop->await($pool->acquire);
         $loop->await($conn->watch('dirty:key'));
@@ -2169,14 +2169,14 @@ done_testing;
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis::Pool;
+use Async::Redis::Pool;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $test_redis = eval {
-        require Future::IO::Redis;
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        require Async::Redis;
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -2184,7 +2184,7 @@ SKIP: {
     $test_redis->disconnect;
 
     subtest 'cleanup mode resets in_multi' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host     => 'localhost',
             on_dirty => 'cleanup',
         );
@@ -2209,7 +2209,7 @@ SKIP: {
     };
 
     subtest 'cleanup mode resets watching' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host     => 'localhost',
             on_dirty => 'cleanup',
         );
@@ -2228,7 +2228,7 @@ SKIP: {
     };
 
     subtest 'cleanup NEVER attempted for pubsub' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host     => 'localhost',
             on_dirty => 'cleanup',
         );
@@ -2249,7 +2249,7 @@ SKIP: {
     };
 
     subtest 'default destroy mode' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host     => 'localhost',
             on_dirty => 'destroy',  # explicit default
         );
@@ -2280,14 +2280,14 @@ done_testing;
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis::Pool;
+use Async::Redis::Pool;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $test_redis = eval {
-        require Future::IO::Redis;
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        require Async::Redis;
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -2295,7 +2295,7 @@ SKIP: {
     $test_redis->disconnect;
 
     subtest 'health check on acquire' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
             min  => 1,
         );
@@ -2315,7 +2315,7 @@ SKIP: {
     };
 
     subtest 'unhealthy connection replaced' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
             min  => 1,
         );
@@ -2344,7 +2344,7 @@ SKIP: {
     };
 
     subtest 'pubsub connection fails health check' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
         );
 
@@ -2376,15 +2376,15 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis::Pool;
+use Async::Redis::Pool;
 use Time::HiRes qw(time);
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $test_redis = eval {
-        require Future::IO::Redis;
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        require Async::Redis;
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -2392,7 +2392,7 @@ SKIP: {
     $test_redis->disconnect;
 
     subtest 'respects min connections' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
             min  => 2,
             max  => 5,
@@ -2411,7 +2411,7 @@ SKIP: {
     };
 
     subtest 'respects max connections' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host            => 'localhost',
             min             => 0,
             max             => 2,
@@ -2446,7 +2446,7 @@ SKIP: {
     };
 
     subtest 'connections grow to max under load' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
             min  => 0,
             max  => 5,
@@ -2468,7 +2468,7 @@ SKIP: {
     };
 
     subtest 'acquire_timeout' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host            => 'localhost',
             max             => 1,
             acquire_timeout => 0.5,
@@ -2496,14 +2496,14 @@ done_testing;
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis::Pool;
+use Async::Redis::Pool;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $test_redis = eval {
-        require Future::IO::Redis;
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        require Async::Redis;
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -2511,7 +2511,7 @@ SKIP: {
     $test_redis->disconnect;
 
     subtest 'stats structure' => sub {
-        my $pool = Future::IO::Redis::Pool->new(host => 'localhost');
+        my $pool = Async::Redis::Pool->new(host => 'localhost');
 
         my $stats = $pool->stats;
 
@@ -2523,7 +2523,7 @@ SKIP: {
     };
 
     subtest 'stats reflect pool state' => sub {
-        my $pool = Future::IO::Redis::Pool->new(host => 'localhost');
+        my $pool = Async::Redis::Pool->new(host => 'localhost');
 
         my $stats = $pool->stats;
         is($stats->{active}, 0, 'initially 0 active');
@@ -2545,7 +2545,7 @@ SKIP: {
     };
 
     subtest 'destroyed counter' => sub {
-        my $pool = Future::IO::Redis::Pool->new(host => 'localhost');
+        my $pool = Async::Redis::Pool->new(host => 'localhost');
 
         my $stats = $pool->stats;
         is($stats->{destroyed}, 0, 'initially 0 destroyed');
@@ -2560,7 +2560,7 @@ SKIP: {
     };
 
     subtest 'concurrent stats' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
             max  => 5,
         );
@@ -2600,15 +2600,15 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis::Pool;
+use Async::Redis::Pool;
 use Time::HiRes qw(time);
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $test_redis = eval {
-        require Future::IO::Redis;
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        require Async::Redis;
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -2616,7 +2616,7 @@ SKIP: {
     $test_redis->disconnect;
 
     subtest 'concurrent with() calls share pool' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
             min  => 2,
             max  => 5,
@@ -2653,7 +2653,7 @@ SKIP: {
     };
 
     subtest 'pool under heavy concurrent load' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
             min  => 2,
             max  => 10,
@@ -2682,7 +2682,7 @@ SKIP: {
     };
 
     subtest 'pool non-blocking under load' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
             max  => 5,
         );
@@ -2711,7 +2711,7 @@ SKIP: {
     };
 
     subtest 'waiters served in order' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host            => 'localhost',
             max             => 1,
             acquire_timeout => 5,

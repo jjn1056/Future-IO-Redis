@@ -3,13 +3,13 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Future::AsyncAwait;
 use Test2::V0;
 use Time::HiRes qw(time);
 
 use lib 'lib';
-use Future::IO::Redis;
+use Async::Redis;
 
 # Skip if no Redis available
 
@@ -22,11 +22,11 @@ eval { require Future::IO::Impl::IOAsync };
 
 subtest 'publish and subscribe' => sub {
     # Publisher connection
-    my $pub = Future::IO::Redis->new(host => redis_host(), port => redis_port());
+    my $pub = Async::Redis->new(host => redis_host(), port => redis_port());
     get_loop()->await($pub->connect);
 
     # Subscriber connection
-    my $sub = Future::IO::Redis->new(host => redis_host(), port => redis_port());
+    my $sub = Async::Redis->new(host => redis_host(), port => redis_port());
     get_loop()->await($sub->connect);
 
     my @received;
@@ -74,8 +74,8 @@ subtest 'publish and subscribe' => sub {
 # ============================================================================
 
 subtest 'multiple channel subscription' => sub {
-    my $pub = Future::IO::Redis->new(host => redis_host(), port => redis_port());
-    my $sub = Future::IO::Redis->new(host => redis_host(), port => redis_port());
+    my $pub = Async::Redis->new(host => redis_host(), port => redis_port());
+    my $sub = Async::Redis->new(host => redis_host(), port => redis_port());
 
     get_loop()->await(Future->needs_all($pub->connect, $sub->connect));
 
@@ -118,9 +118,9 @@ subtest 'multiple channel subscription' => sub {
 # ============================================================================
 
 subtest 'pubsub nonblocking' => sub {
-    my $pub = Future::IO::Redis->new(host => redis_host(), port => redis_port());
-    my $sub = Future::IO::Redis->new(host => redis_host(), port => redis_port());
-    my $worker = Future::IO::Redis->new(host => redis_host(), port => redis_port());
+    my $pub = Async::Redis->new(host => redis_host(), port => redis_port());
+    my $sub = Async::Redis->new(host => redis_host(), port => redis_port());
+    my $worker = Async::Redis->new(host => redis_host(), port => redis_port());
 
     get_loop()->await(Future->needs_all($pub->connect, $sub->connect, $worker->connect));
 

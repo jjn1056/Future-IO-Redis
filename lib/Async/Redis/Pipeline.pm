@@ -1,4 +1,4 @@
-package Future::IO::Redis::Pipeline;
+package Async::Redis::Pipeline;
 
 use strict;
 use warnings;
@@ -71,10 +71,10 @@ async sub execute {
 
     # Apply key prefixing if configured
     if (defined $redis->{prefix} && $redis->{prefix} ne '') {
-        require Future::IO::Redis::KeyExtractor;
+        require Async::Redis::KeyExtractor;
         for my $cmd (@commands) {
             my ($name, @args) = @$cmd;
-            @args = Future::IO::Redis::KeyExtractor::apply_prefix(
+            @args = Async::Redis::KeyExtractor::apply_prefix(
                 $redis->{prefix}, $name, @args
             );
             @$cmd = ($name, @args);
@@ -93,7 +93,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Pipeline - Command pipelining
+Async::Redis::Pipeline - Command pipelining
 
 =head1 SYNOPSIS
 
@@ -130,7 +130,7 @@ Two distinct failure modes:
 
 =head2 new
 
-    my $pipe = Future::IO::Redis::Pipeline->new(
+    my $pipe = Async::Redis::Pipeline->new(
         redis     => $redis_client,
         max_depth => 10000,
     );

@@ -2,26 +2,26 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
 use Future;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time);
 
 SKIP: {
     my $redis1 = eval {
-        my $r = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost', connect_timeout => 2);
         run { $r->connect };
         $r;
     };
     skip "Redis not available: $@", 1 unless $redis1;
 
     # Second connection for concurrent operations
-    my $redis2 = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
+    my $redis2 = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
     run { $redis2->connect };
 
     # Third connection for pushing data
-    my $pusher = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
+    my $pusher = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
     run { $pusher->connect };
 
     subtest 'multiple concurrent BLPOP on different queues' => sub {

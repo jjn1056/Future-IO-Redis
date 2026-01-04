@@ -2,15 +2,15 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
-use Future::IO::Redis;
+use Async::Redis;
 use Future;
 use Time::HiRes qw(time);
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
             auto_pipeline => 1,
@@ -53,7 +53,7 @@ SKIP: {
     subtest 'auto-pipeline faster than sequential' => sub {
         # Compare auto-pipelined to non-pipelined
 
-        my $redis_no_ap = Future::IO::Redis->new(
+        my $redis_no_ap = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             auto_pipeline => 0,  # disabled
         );
@@ -80,7 +80,7 @@ SKIP: {
     };
 
     subtest 'auto-pipeline respects depth limit' => sub {
-        my $redis_limited = Future::IO::Redis->new(
+        my $redis_limited = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             auto_pipeline => 1,
             pipeline_depth => 50,

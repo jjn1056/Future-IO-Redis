@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 
 #
-# Multi-Worker Chat using PAGI + Future::IO::Redis
+# Multi-Worker Chat using PAGI + Async::Redis
 #
 # This is a port of PAGI's websocket-chat-v2 example, adapted to use
 # Redis for state management and PubSub for cross-worker broadcasting.
@@ -28,7 +28,7 @@ Future::IO->load_impl('IOAsync');
 
 use File::Basename qw(dirname);
 use lib dirname(__FILE__) . '/lib';
-use lib dirname(__FILE__) . '/../../lib';  # For Future::IO::Redis
+use lib dirname(__FILE__) . '/../../lib';  # For Async::Redis
 
 use ChatApp::State qw(init_redis);
 use ChatApp::HTTP;
@@ -150,7 +150,7 @@ PAGI Chat - Multi-Worker Redis-backed Chat Example
 
 =head1 DESCRIPTION
 
-Demonstrates Future::IO::Redis enabling multi-worker real-time applications.
+Demonstrates Async::Redis enabling multi-worker real-time applications.
 
 =head1 USAGE
 

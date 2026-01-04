@@ -1,4 +1,4 @@
-# Future::IO::Redis - TODO
+# Async::Redis - TODO
 
 ## Current Version: v1.x (RESP2)
 
@@ -31,7 +31,7 @@ Protocol::Redis only supports RESP2. To implement RESP3, we must either:
 
 1. Write `Protocol::Redis::RESP3` from scratch
 2. Extend Protocol::Redis with RESP3 types
-3. Write a custom parser in Future::IO::Redis
+3. Write a custom parser in Async::Redis
 
 ### RESP3 Type Prefixes
 
@@ -60,7 +60,7 @@ _  Null             (NEW)
 ```perl
 # lib/Future/IO/Redis/Protocol/RESP3.pm
 
-package Future::IO::Redis::Protocol::RESP3;
+package Async::Redis::Protocol::RESP3;
 
 # Parse RESP3 types
 sub parse {
@@ -133,7 +133,7 @@ sub _handle_push_message {
 #### Phase 4: Client-Side Caching
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     protocol => 3,
     client_cache => 1,
     cache_size => 10000,  # LRU cache entries
@@ -149,19 +149,19 @@ my $value = await $redis->get('key');  # Cached locally
 
 ```perl
 # Explicit protocol selection
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     host => 'localhost',
     protocol => 3,  # Request RESP3
 );
 
 # Auto-detect (try RESP3, fall back to RESP2)
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     host => 'localhost',
     protocol => 'auto',  # Default in v2.x
 );
 
 # Force RESP2 (backward compat)
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     host => 'localhost',
     protocol => 2,
 );
@@ -170,7 +170,7 @@ my $redis = Future::IO::Redis->new(
 say $redis->protocol_version;  # 2 or 3
 
 # Inline PubSub (RESP3 only)
-my $redis = Future::IO::Redis->new(protocol => 3);
+my $redis = Async::Redis->new(protocol => 3);
 await $redis->connect;
 
 # Subscribe on same connection as commands!
@@ -221,7 +221,7 @@ await $redis->set('key', 'value');
 ### Sentinel Support
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     sentinels => ['sentinel1:26379', 'sentinel2:26379'],
     service => 'mymaster',
 );
@@ -234,7 +234,7 @@ my $redis = Future::IO::Redis->new(
 ### Cluster Support
 
 ```perl
-my $cluster = Future::IO::Redis::Cluster->new(
+my $cluster = Async::Redis::Cluster->new(
     nodes => ['node1:7000', 'node2:7001', 'node3:7002'],
 );
 ```

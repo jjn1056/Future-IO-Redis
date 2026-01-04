@@ -1,5 +1,5 @@
 # lib/Future/IO/Redis/KeyExtractor.pm
-package Future::IO::Redis::KeyExtractor;
+package Async::Redis::KeyExtractor;
 
 use strict;
 use warnings;
@@ -456,20 +456,20 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::KeyExtractor - Key position detection for Redis commands
+Async::Redis::KeyExtractor - Key position detection for Redis commands
 
 =head1 SYNOPSIS
 
-    use Future::IO::Redis::KeyExtractor;
+    use Async::Redis::KeyExtractor;
 
     # Get indices of key arguments
-    my @indices = Future::IO::Redis::KeyExtractor::extract_key_indices(
+    my @indices = Async::Redis::KeyExtractor::extract_key_indices(
         'MSET', 'k1', 'v1', 'k2', 'v2'
     );
     # @indices = (0, 2)
 
     # Apply prefix to keys only
-    my @args = Future::IO::Redis::KeyExtractor::apply_prefix(
+    my @args = Async::Redis::KeyExtractor::apply_prefix(
         'myapp:', 'MSET', 'k1', 'v1', 'k2', 'v2'
     );
     # @args = ('myapp:k1', 'v1', 'myapp:k2', 'v2')

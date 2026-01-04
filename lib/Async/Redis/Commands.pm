@@ -3,9 +3,9 @@
 # Generated from redis-doc commands.json
 #
 # This module provides async method wrappers for all Redis commands.
-# Consume this role in Future::IO::Redis.
+# Consume this role in Async::Redis.
 
-package Future::IO::Redis::Commands;
+package Async::Redis::Commands;
 
 use strict;
 use warnings;
@@ -2266,7 +2266,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Commands - Auto-generated Redis command methods
+Async::Redis::Commands - Auto-generated Redis command methods
 
 =head1 DESCRIPTION
 

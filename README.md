@@ -1,4 +1,4 @@
-# Future::IO::Redis
+# Async::Redis
 
 Async Redis client for Perl using Future::IO
 
@@ -17,7 +17,7 @@ Async Redis client for Perl using Future::IO
 ## Installation
 
 ```bash
-cpanm Future::IO::Redis
+cpanm Async::Redis
 
 # Or with dependencies
 cpanm Future::IO Future::AsyncAwait Protocol::Redis IO::Async
@@ -29,7 +29,7 @@ cpanm Protocol::Redis::XS
 ## Quick Start
 
 ```perl
-use Future::IO::Redis;
+use Async::Redis;
 use Future::AsyncAwait;
 
 # Use any Future::IO-compatible event loop
@@ -40,7 +40,7 @@ my $loop = IO::Async::Loop->new;
 # Or UV:        use Future::IO; Future::IO->load_impl('UV');
 # Or Glib:      use Future::IO; Future::IO->load_impl('Glib');
 
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     host => 'localhost',
     port => 6379,
 );
@@ -71,7 +71,7 @@ $loop->await(main());
 ### Connection Options
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     # Basic connection
     host => 'localhost',
     port => 6379,
@@ -153,9 +153,9 @@ my $results = await $redis->watch_multi(['counter'], async sub {
 ### Connection Pooling
 
 ```perl
-use Future::IO::Redis::Pool;
+use Async::Redis::Pool;
 
-my $pool = Future::IO::Redis::Pool->new(
+my $pool = Async::Redis::Pool->new(
     host => 'localhost',
     min  => 2,
     max  => 10,
@@ -226,7 +226,7 @@ Pipelining provides ~30x throughput improvement over sequential commands.
 
 ```
 ┌─────────────────────────────────────┐
-│         Future::IO::Redis           │
+│         Async::Redis           │
 │  - Connection management            │
 │  - Command methods                  │
 │  - Pipelining / Auto-pipeline       │

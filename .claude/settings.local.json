@@ -63,7 +63,8 @@
       "Bash(REDIS_HOST=localhost timeout 45 perl:*)",
       "Bash(REDIS_HOST=localhost timeout 10 perl:*)",
       "mcp__playwright__browser_tabs",
-      "Bash(./reset-redis.sh)"
+      "Bash(./reset-redis.sh)",
+      "Bash(git mv:*)"
     ]
   }
 }

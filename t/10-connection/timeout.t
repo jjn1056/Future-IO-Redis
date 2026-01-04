@@ -2,15 +2,15 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time);
 
 # Helper: await a Future and return its result (throws on failure)
 
 subtest 'constructor accepts timeout parameters' => sub {
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host                    => 'localhost',
         connect_timeout         => 5,
         read_timeout            => 10,
@@ -27,7 +27,7 @@ subtest 'constructor accepts timeout parameters' => sub {
 };
 
 subtest 'default timeout values' => sub {
-    my $redis = Future::IO::Redis->new(host => 'localhost');
+    my $redis = Async::Redis->new(host => 'localhost');
 
     is($redis->{connect_timeout}, 10, 'default connect_timeout');
     is($redis->{read_timeout}, 30, 'default read_timeout');
@@ -38,7 +38,7 @@ subtest 'default timeout values' => sub {
 subtest 'connect timeout fires on unreachable host' => sub {
     my $start = time();
 
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host            => '10.255.255.1',  # non-routable IP
         connect_timeout => 0.5,
     );
@@ -65,7 +65,7 @@ subtest 'event loop not blocked during connect timeout' => sub {
     get_loop()->add($timer);
     $timer->start;
 
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host            => '10.255.255.1',
         connect_timeout => 0.3,
     );
@@ -86,7 +86,7 @@ subtest 'event loop not blocked during connect timeout' => sub {
 # Tests requiring actual Redis connection
 SKIP: {
     my $test_redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host            => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
         );
@@ -97,7 +97,7 @@ SKIP: {
     $test_redis->disconnect;
 
     subtest 'request timeout fires on slow command' => sub {
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host            => $ENV{REDIS_HOST} // 'localhost',
             request_timeout => 0.3,
         );
@@ -129,7 +129,7 @@ SKIP: {
     };
 
     subtest 'event loop not blocked during request timeout' => sub {
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host            => $ENV{REDIS_HOST} // 'localhost',
             request_timeout => 0.3,
         );
@@ -162,7 +162,7 @@ SKIP: {
     };
 
     subtest 'blocking command uses extended timeout' => sub {
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host                    => $ENV{REDIS_HOST} // 'localhost',
             request_timeout         => 1,
             blocking_timeout_buffer => 1,
@@ -187,7 +187,7 @@ SKIP: {
     };
 
     subtest 'normal commands work within timeout' => sub {
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host            => $ENV{REDIS_HOST} // 'localhost',
             request_timeout => 5,
         );

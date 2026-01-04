@@ -1,4 +1,4 @@
-package Future::IO::Redis::Error::Timeout;
+package Async::Redis::Error::Timeout;
 
 use strict;
 use warnings;
@@ -6,7 +6,7 @@ use 5.018;
 
 our $VERSION = '0.001';
 
-use parent 'Future::IO::Redis::Error';
+use parent 'Async::Redis::Error';
 
 sub command        { shift->{command} }
 sub timeout        { shift->{timeout} }
@@ -18,7 +18,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Error::Timeout - Timeout exception
+Async::Redis::Error::Timeout - Timeout exception
 
 =head1 DESCRIPTION
 

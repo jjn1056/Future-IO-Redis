@@ -1,4 +1,4 @@
-package Future::IO::Redis::Script;
+package Async::Redis::Script;
 
 use strict;
 use warnings;
@@ -61,7 +61,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Script - Reusable Lua script wrapper
+Async::Redis::Script - Reusable Lua script wrapper
 
 =head1 SYNOPSIS
 

@@ -1,4 +1,4 @@
-package Future::IO::Redis::Error::Connection;
+package Async::Redis::Error::Connection;
 
 use strict;
 use warnings;
@@ -6,7 +6,7 @@ use 5.018;
 
 our $VERSION = '0.001';
 
-use parent 'Future::IO::Redis::Error';
+use parent 'Async::Redis::Error';
 
 sub host   { shift->{host} }
 sub port   { shift->{port} }
@@ -19,7 +19,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Error::Connection - Connection failure exception
+Async::Redis::Error::Connection - Connection failure exception
 
 =head1 DESCRIPTION
 

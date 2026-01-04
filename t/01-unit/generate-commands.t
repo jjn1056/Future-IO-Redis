@@ -22,7 +22,7 @@ subtest 'generator produces Commands.pm' => sub {
     my $content = do { local $/; <$fh> };
     close $fh;
 
-    like($content, qr/package Future::IO::Redis::Commands/, 'package declaration');
+    like($content, qr/package Async::Redis::Commands/, 'package declaration');
     like($content, qr/use Future::AsyncAwait/, 'uses async/await');
     like($content, qr/async sub get\b/, 'has get method');
     like($content, qr/async sub set\b/, 'has set method');

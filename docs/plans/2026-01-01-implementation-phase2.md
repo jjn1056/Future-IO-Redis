@@ -1,4 +1,4 @@
-# Future::IO::Redis Phase 2: Command Generation
+# Async::Redis Phase 2: Command Generation
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -56,7 +56,7 @@ subtest 'generator produces Commands.pm' => sub {
     my $content = do { local $/; <$fh> };
     close $fh;
 
-    like($content, qr/package Future::IO::Redis::Commands/, 'package declaration');
+    like($content, qr/package Async::Redis::Commands/, 'package declaration');
     like($content, qr/use Future::AsyncAwait/, 'uses async/await');
     like($content, qr/async sub get\b/, 'has get method');
     like($content, qr/async sub set\b/, 'has set method');
@@ -117,7 +117,7 @@ curl -L https://raw.githubusercontent.com/redis/redis-doc/master/commands.json \
 #!/usr/bin/env perl
 # bin/generate-commands
 #
-# Generates Future::IO::Redis::Commands from redis-doc commands.json
+# Generates Async::Redis::Commands from redis-doc commands.json
 
 use strict;
 use warnings;
@@ -191,9 +191,9 @@ sub generate_module {
 # Generated from redis-doc commands.json
 #
 # This module provides async method wrappers for all Redis commands.
-# Consume this role in Future::IO::Redis.
+# Consume this role in Async::Redis.
 
-package Future::IO::Redis::Commands;
+package Async::Redis::Commands;
 
 use strict;
 use warnings;
@@ -209,7 +209,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Commands - Auto-generated Redis command methods
+Async::Redis::Commands - Auto-generated Redis command methods
 
 =head1 DESCRIPTION
 
@@ -379,50 +379,50 @@ EOF
 ```perl
 # t/01-unit/commands.t
 use Test2::V0;
-use Future::IO::Redis::Commands;
+use Async::Redis::Commands;
 
 subtest 'module loads' => sub {
-    ok(Future::IO::Redis::Commands->can('get'), 'has get method');
-    ok(Future::IO::Redis::Commands->can('set'), 'has set method');
-    ok(Future::IO::Redis::Commands->can('del'), 'has del method');
-    ok(Future::IO::Redis::Commands->can('exists'), 'has exists method');
+    ok(Async::Redis::Commands->can('get'), 'has get method');
+    ok(Async::Redis::Commands->can('set'), 'has set method');
+    ok(Async::Redis::Commands->can('del'), 'has del method');
+    ok(Async::Redis::Commands->can('exists'), 'has exists method');
 };
 
 subtest 'string commands exist' => sub {
     for my $cmd (qw(get set append getrange setrange strlen incr decr incrby decrby)) {
-        ok(Future::IO::Redis::Commands->can($cmd), "has $cmd method");
+        ok(Async::Redis::Commands->can($cmd), "has $cmd method");
     }
 };
 
 subtest 'hash commands exist' => sub {
     for my $cmd (qw(hset hget hdel hexists hlen hkeys hvals hgetall hmset hmget hsetnx hincrby)) {
-        ok(Future::IO::Redis::Commands->can($cmd), "has $cmd method");
+        ok(Async::Redis::Commands->can($cmd), "has $cmd method");
     }
 };
 
 subtest 'list commands exist' => sub {
     for my $cmd (qw(lpush rpush lpop rpop llen lrange lindex lset lrem linsert)) {
-        ok(Future::IO::Redis::Commands->can($cmd), "has $cmd method");
+        ok(Async::Redis::Commands->can($cmd), "has $cmd method");
     }
 };
 
 subtest 'set commands exist' => sub {
     for my $cmd (qw(sadd srem smembers sismember scard sinter sunion sdiff spop srandmember)) {
-        ok(Future::IO::Redis::Commands->can($cmd), "has $cmd method");
+        ok(Async::Redis::Commands->can($cmd), "has $cmd method");
     }
 };
 
 subtest 'sorted set commands exist' => sub {
     for my $cmd (qw(zadd zrem zscore zrank zrange zrangebyscore zcard zincrby)) {
-        ok(Future::IO::Redis::Commands->can($cmd), "has $cmd method");
+        ok(Async::Redis::Commands->can($cmd), "has $cmd method");
     }
 };
 
 subtest 'subcommand methods exist' => sub {
-    ok(Future::IO::Redis::Commands->can('client_setname'), 'has client_setname');
-    ok(Future::IO::Redis::Commands->can('client_getname'), 'has client_getname');
-    ok(Future::IO::Redis::Commands->can('config_get'), 'has config_get');
-    ok(Future::IO::Redis::Commands->can('config_set'), 'has config_set');
+    ok(Async::Redis::Commands->can('client_setname'), 'has client_setname');
+    ok(Async::Redis::Commands->can('client_getname'), 'has client_getname');
+    ok(Async::Redis::Commands->can('config_get'), 'has config_get');
+    ok(Async::Redis::Commands->can('config_set'), 'has config_set');
 };
 
 done_testing;
@@ -450,14 +450,14 @@ Edit `lib/Future/IO/Redis.pm` to consume the Commands role. Add after `use` stat
 
 ```perl
 # Import command methods
-use Future::IO::Redis::Commands;
+use Async::Redis::Commands;
 
 # In the package, make methods available
 # Option A: Inheritance
-our @ISA = qw(Future::IO::Redis::Commands);
+our @ISA = qw(Async::Redis::Commands);
 
 # Option B: Or use Role::Tiny if you want role composition
-# with 'Future::IO::Redis::Commands';
+# with 'Async::Redis::Commands';
 ```
 
 ### Step 6: Write string commands integration test
@@ -468,13 +468,13 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -569,13 +569,13 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -674,13 +674,13 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -762,13 +762,13 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -852,13 +852,13 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -946,13 +946,13 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -1105,67 +1105,67 @@ EOF
 ```perl
 # t/01-unit/key-extractor.t
 use Test2::V0;
-use Future::IO::Redis::KeyExtractor;
+use Async::Redis::KeyExtractor;
 
 subtest 'simple single-key commands' => sub {
-    my @indices = Future::IO::Redis::KeyExtractor::extract_key_indices('GET', 'mykey');
+    my @indices = Async::Redis::KeyExtractor::extract_key_indices('GET', 'mykey');
     is(\@indices, [0], 'GET: key at index 0');
 
-    @indices = Future::IO::Redis::KeyExtractor::extract_key_indices('SET', 'mykey', 'value');
+    @indices = Async::Redis::KeyExtractor::extract_key_indices('SET', 'mykey', 'value');
     is(\@indices, [0], 'SET: key at index 0');
 
-    @indices = Future::IO::Redis::KeyExtractor::extract_key_indices('DEL', 'key1');
+    @indices = Async::Redis::KeyExtractor::extract_key_indices('DEL', 'key1');
     is(\@indices, [0], 'DEL single: key at index 0');
 };
 
 subtest 'multi-key commands' => sub {
-    my @indices = Future::IO::Redis::KeyExtractor::extract_key_indices('MGET', 'k1', 'k2', 'k3');
+    my @indices = Async::Redis::KeyExtractor::extract_key_indices('MGET', 'k1', 'k2', 'k3');
     is(\@indices, [0, 1, 2], 'MGET: all args are keys');
 
-    @indices = Future::IO::Redis::KeyExtractor::extract_key_indices('DEL', 'k1', 'k2', 'k3');
+    @indices = Async::Redis::KeyExtractor::extract_key_indices('DEL', 'k1', 'k2', 'k3');
     is(\@indices, [0, 1, 2], 'DEL multi: all args are keys');
 
-    @indices = Future::IO::Redis::KeyExtractor::extract_key_indices('EXISTS', 'k1', 'k2');
+    @indices = Async::Redis::KeyExtractor::extract_key_indices('EXISTS', 'k1', 'k2');
     is(\@indices, [0, 1], 'EXISTS: all args are keys');
 };
 
 subtest 'MSET - even indices only' => sub {
-    my @indices = Future::IO::Redis::KeyExtractor::extract_key_indices('MSET', 'k1', 'v1', 'k2', 'v2');
+    my @indices = Async::Redis::KeyExtractor::extract_key_indices('MSET', 'k1', 'v1', 'k2', 'v2');
     is(\@indices, [0, 2], 'MSET: only even indices are keys');
 };
 
 subtest 'hash commands - first arg is key' => sub {
-    my @indices = Future::IO::Redis::KeyExtractor::extract_key_indices('HSET', 'hash', 'field', 'value');
+    my @indices = Async::Redis::KeyExtractor::extract_key_indices('HSET', 'hash', 'field', 'value');
     is(\@indices, [0], 'HSET: first arg is key');
 
-    @indices = Future::IO::Redis::KeyExtractor::extract_key_indices('HGET', 'hash', 'field');
+    @indices = Async::Redis::KeyExtractor::extract_key_indices('HGET', 'hash', 'field');
     is(\@indices, [0], 'HGET: first arg is key');
 
-    @indices = Future::IO::Redis::KeyExtractor::extract_key_indices('HGETALL', 'hash');
+    @indices = Async::Redis::KeyExtractor::extract_key_indices('HGETALL', 'hash');
     is(\@indices, [0], 'HGETALL: first arg is key');
 };
 
 subtest 'list commands - first arg is key' => sub {
-    my @indices = Future::IO::Redis::KeyExtractor::extract_key_indices('LPUSH', 'list', 'item1', 'item2');
+    my @indices = Async::Redis::KeyExtractor::extract_key_indices('LPUSH', 'list', 'item1', 'item2');
     is(\@indices, [0], 'LPUSH: first arg is key');
 
-    @indices = Future::IO::Redis::KeyExtractor::extract_key_indices('LRANGE', 'list', 0, -1);
+    @indices = Async::Redis::KeyExtractor::extract_key_indices('LRANGE', 'list', 0, -1);
     is(\@indices, [0], 'LRANGE: first arg is key');
 };
 
 subtest 'EVAL/EVALSHA - dynamic numkeys' => sub {
     # EVAL script numkeys key1 key2 arg1 arg2
-    my @indices = Future::IO::Redis::KeyExtractor::extract_key_indices(
+    my @indices = Async::Redis::KeyExtractor::extract_key_indices(
         'EVAL', 'return 1', 2, 'key1', 'key2', 'arg1', 'arg2'
     );
     is(\@indices, [2, 3], 'EVAL: keys at indices 2,3 (numkeys=2)');
 
-    @indices = Future::IO::Redis::KeyExtractor::extract_key_indices(
+    @indices = Async::Redis::KeyExtractor::extract_key_indices(
         'EVALSHA', 'abc123', 1, 'mykey', 'arg1'
     );
     is(\@indices, [2], 'EVALSHA: key at index 2 (numkeys=1)');
 
-    @indices = Future::IO::Redis::KeyExtractor::extract_key_indices(
+    @indices = Async::Redis::KeyExtractor::extract_key_indices(
         'EVAL', 'return 1', 0, 'arg1', 'arg2'
     );
     is(\@indices, [], 'EVAL with numkeys=0: no keys');
@@ -1173,14 +1173,14 @@ subtest 'EVAL/EVALSHA - dynamic numkeys' => sub {
 
 subtest 'BITOP - skip operation arg' => sub {
     # BITOP operation destkey srckey1 [srckey2 ...]
-    my @indices = Future::IO::Redis::KeyExtractor::extract_key_indices(
+    my @indices = Async::Redis::KeyExtractor::extract_key_indices(
         'BITOP', 'AND', 'dest', 'src1', 'src2'
     );
     is(\@indices, [1, 2, 3], 'BITOP: keys start at index 1');
 };
 
 subtest 'OBJECT subcommands' => sub {
-    my @indices = Future::IO::Redis::KeyExtractor::extract_key_indices(
+    my @indices = Async::Redis::KeyExtractor::extract_key_indices(
         'OBJECT', 'ENCODING', 'mykey'
     );
     is(\@indices, [1], 'OBJECT ENCODING: key at index 1');
@@ -1188,12 +1188,12 @@ subtest 'OBJECT subcommands' => sub {
 
 subtest 'XREAD - keys between STREAMS and IDs' => sub {
     # XREAD [COUNT n] [BLOCK ms] STREAMS stream1 stream2 id1 id2
-    my @indices = Future::IO::Redis::KeyExtractor::extract_key_indices(
+    my @indices = Async::Redis::KeyExtractor::extract_key_indices(
         'XREAD', 'STREAMS', 's1', 's2', '0', '0'
     );
     is(\@indices, [1, 2], 'XREAD: streams at indices 1,2');
 
-    @indices = Future::IO::Redis::KeyExtractor::extract_key_indices(
+    @indices = Async::Redis::KeyExtractor::extract_key_indices(
         'XREAD', 'COUNT', '10', 'BLOCK', '1000', 'STREAMS', 's1', 's2', 's3', '0', '0', '0'
     );
     is(\@indices, [6, 7, 8], 'XREAD with options: streams after STREAMS keyword');
@@ -1201,46 +1201,46 @@ subtest 'XREAD - keys between STREAMS and IDs' => sub {
 
 subtest 'MIGRATE - single key or KEYS keyword' => sub {
     # MIGRATE host port key db timeout [COPY] [REPLACE] [AUTH pw] [KEYS k1 k2]
-    my @indices = Future::IO::Redis::KeyExtractor::extract_key_indices(
+    my @indices = Async::Redis::KeyExtractor::extract_key_indices(
         'MIGRATE', 'host', '6379', 'mykey', '0', '5000'
     );
     is(\@indices, [2], 'MIGRATE single: key at index 2');
 
-    @indices = Future::IO::Redis::KeyExtractor::extract_key_indices(
+    @indices = Async::Redis::KeyExtractor::extract_key_indices(
         'MIGRATE', 'host', '6379', '', '0', '5000', 'KEYS', 'k1', 'k2'
     );
     is(\@indices, [6, 7], 'MIGRATE multi: keys after KEYS keyword');
 };
 
 subtest 'apply_prefix' => sub {
-    my @args = Future::IO::Redis::KeyExtractor::apply_prefix(
+    my @args = Async::Redis::KeyExtractor::apply_prefix(
         'myapp:', 'GET', 'key1'
     );
     is(\@args, ['myapp:key1'], 'GET with prefix');
 
-    @args = Future::IO::Redis::KeyExtractor::apply_prefix(
+    @args = Async::Redis::KeyExtractor::apply_prefix(
         'myapp:', 'SET', 'key1', 'value'
     );
     is(\@args, ['myapp:key1', 'value'], 'SET: value not prefixed');
 
-    @args = Future::IO::Redis::KeyExtractor::apply_prefix(
+    @args = Async::Redis::KeyExtractor::apply_prefix(
         'myapp:', 'MGET', 'k1', 'k2', 'k3'
     );
     is(\@args, ['myapp:k1', 'myapp:k2', 'myapp:k3'], 'MGET: all keys prefixed');
 
-    @args = Future::IO::Redis::KeyExtractor::apply_prefix(
+    @args = Async::Redis::KeyExtractor::apply_prefix(
         'myapp:', 'MSET', 'k1', 'v1', 'k2', 'v2'
     );
     is(\@args, ['myapp:k1', 'v1', 'myapp:k2', 'v2'], 'MSET: only keys prefixed');
 };
 
 subtest 'no prefix when empty' => sub {
-    my @args = Future::IO::Redis::KeyExtractor::apply_prefix(
+    my @args = Async::Redis::KeyExtractor::apply_prefix(
         '', 'GET', 'key1'
     );
     is(\@args, ['key1'], 'empty prefix: unchanged');
 
-    @args = Future::IO::Redis::KeyExtractor::apply_prefix(
+    @args = Async::Redis::KeyExtractor::apply_prefix(
         undef, 'GET', 'key1'
     );
     is(\@args, ['key1'], 'undef prefix: unchanged');
@@ -1248,7 +1248,7 @@ subtest 'no prefix when empty' => sub {
 
 subtest 'unknown command - no prefix, warn in debug' => sub {
     local $ENV{REDIS_DEBUG} = 0;  # Suppress warning
-    my @indices = Future::IO::Redis::KeyExtractor::extract_key_indices(
+    my @indices = Async::Redis::KeyExtractor::extract_key_indices(
         'UNKNOWNCMD', 'arg1', 'arg2'
     );
     is(\@indices, [], 'unknown command: no indices returned');
@@ -1317,7 +1317,7 @@ Save to: `share/key_overrides.json`
 
 ```perl
 # lib/Future/IO/Redis/KeyExtractor.pm
-package Future::IO::Redis::KeyExtractor;
+package Async::Redis::KeyExtractor;
 
 use strict;
 use warnings;
@@ -1774,20 +1774,20 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::KeyExtractor - Key position detection for Redis commands
+Async::Redis::KeyExtractor - Key position detection for Redis commands
 
 =head1 SYNOPSIS
 
-    use Future::IO::Redis::KeyExtractor;
+    use Async::Redis::KeyExtractor;
 
     # Get indices of key arguments
-    my @indices = Future::IO::Redis::KeyExtractor::extract_key_indices(
+    my @indices = Async::Redis::KeyExtractor::extract_key_indices(
         'MSET', 'k1', 'v1', 'k2', 'v2'
     );
     # @indices = (0, 2)
 
     # Apply prefix to keys only
-    my @args = Future::IO::Redis::KeyExtractor::apply_prefix(
+    my @args = Async::Redis::KeyExtractor::apply_prefix(
         'myapp:', 'MSET', 'k1', 'v1', 'k2', 'v2'
     );
     # @args = ('myapp:k1', 'v1', 'myapp:k2', 'v2')
@@ -1813,13 +1813,13 @@ Expected: PASS
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host   => 'localhost',
             prefix => 'test:prefix:',
             connect_timeout => 2,
@@ -1833,7 +1833,7 @@ SKIP: {
         $loop->await($redis->set('key1', 'value1'));
 
         # Value should be stored under prefixed key
-        my $raw_redis = Future::IO::Redis->new(host => 'localhost');
+        my $raw_redis = Async::Redis->new(host => 'localhost');
         $loop->await($raw_redis->connect);
 
         my $value = $loop->await($raw_redis->get('test:prefix:key1'));
@@ -1848,7 +1848,7 @@ SKIP: {
     };
 
     subtest 'prefix applied to MGET' => sub {
-        my $raw_redis = Future::IO::Redis->new(host => 'localhost');
+        my $raw_redis = Async::Redis->new(host => 'localhost');
         $loop->await($raw_redis->connect);
 
         # Set up keys with prefix
@@ -1867,7 +1867,7 @@ SKIP: {
     subtest 'prefix NOT applied to values' => sub {
         $loop->await($redis->set('key2', 'my:value:with:colons'));
 
-        my $raw_redis = Future::IO::Redis->new(host => 'localhost');
+        my $raw_redis = Async::Redis->new(host => 'localhost');
         $loop->await($raw_redis->connect);
 
         my $value = $loop->await($raw_redis->get('test:prefix:key2'));
@@ -1880,7 +1880,7 @@ SKIP: {
     subtest 'prefix in MSET - keys only, not values' => sub {
         $loop->await($redis->mset('x', 'val:x', 'y', 'val:y'));
 
-        my $raw_redis = Future::IO::Redis->new(host => 'localhost');
+        my $raw_redis = Async::Redis->new(host => 'localhost');
         $loop->await($raw_redis->connect);
 
         my $x = $loop->await($raw_redis->get('test:prefix:x'));
@@ -1895,7 +1895,7 @@ SKIP: {
     subtest 'prefix in hash commands' => sub {
         $loop->await($redis->hset('myhash', 'field1', 'value1'));
 
-        my $raw_redis = Future::IO::Redis->new(host => 'localhost');
+        my $raw_redis = Async::Redis->new(host => 'localhost');
         $loop->await($raw_redis->connect);
 
         # Check it's stored with prefix
@@ -1911,7 +1911,7 @@ SKIP: {
     };
 
     subtest 'DEL with multiple keys' => sub {
-        my $raw_redis = Future::IO::Redis->new(host => 'localhost');
+        my $raw_redis = Async::Redis->new(host => 'localhost');
         $loop->await($raw_redis->connect);
 
         $loop->await($raw_redis->set('test:prefix:d1', '1'));
@@ -1928,7 +1928,7 @@ SKIP: {
     };
 
     subtest 'no prefix when disabled' => sub {
-        my $no_prefix = Future::IO::Redis->new(host => 'localhost');
+        my $no_prefix = Async::Redis->new(host => 'localhost');
         $loop->await($no_prefix->connect);
 
         $loop->await($no_prefix->set('raw:key', 'value'));
@@ -1943,7 +1943,7 @@ SKIP: {
 done_testing;
 ```
 
-### Step 7: Add prefix support to Future::IO::Redis
+### Step 7: Add prefix support to Async::Redis
 
 Edit `lib/Future/IO/Redis.pm` to add prefix option and use KeyExtractor:
 
@@ -1952,14 +1952,14 @@ Edit `lib/Future/IO/Redis.pm` to add prefix option and use KeyExtractor:
 prefix => $args{prefix},
 
 # In command(), add prefixing:
-use Future::IO::Redis::KeyExtractor;
+use Async::Redis::KeyExtractor;
 
 sub command {
     my ($self, $cmd, @args) = @_;
 
     # Apply key prefixing if configured
     if (defined $self->{prefix} && $self->{prefix} ne '') {
-        @args = Future::IO::Redis::KeyExtractor::apply_prefix(
+        @args = Async::Redis::KeyExtractor::apply_prefix(
             $self->{prefix}, $cmd, @args
         );
     }
@@ -1993,7 +1993,7 @@ KeyExtractor.pm:
 - apply_prefix() prefixes only key arguments
 
 Integration:
-- New 'prefix' option in Future::IO::Redis->new()
+- New 'prefix' option in Async::Redis->new()
 - Automatic key prefixing in command() method
 - Values, field names, options NOT prefixed
 

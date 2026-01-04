@@ -2,13 +2,13 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
-use Future::IO::Redis;
+use Async::Redis;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
             pipeline_depth => 100,  # Low limit for testing

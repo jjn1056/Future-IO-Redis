@@ -1,4 +1,4 @@
-package Future::IO::Redis::Error::Disconnected;
+package Async::Redis::Error::Disconnected;
 
 use strict;
 use warnings;
@@ -6,7 +6,7 @@ use 5.018;
 
 our $VERSION = '0.001';
 
-use parent 'Future::IO::Redis::Error';
+use parent 'Async::Redis::Error';
 
 sub queue_size { shift->{queue_size} }
 
@@ -16,7 +16,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Error::Disconnected - Disconnected exception
+Async::Redis::Error::Disconnected - Disconnected exception
 
 =head1 DESCRIPTION
 

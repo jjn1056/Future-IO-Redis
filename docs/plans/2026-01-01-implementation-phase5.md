@@ -1,4 +1,4 @@
-# Future::IO::Redis Phase 5: Pipelining
+# Async::Redis Phase 5: Pipelining
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -40,14 +40,14 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time);
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -162,14 +162,14 @@ Expected: FAIL (Pipeline.pm not implemented)
 
 ```perl
 # lib/Future/IO/Redis/Pipeline.pm
-package Future::IO::Redis::Pipeline;
+package Async::Redis::Pipeline;
 
 use strict;
 use warnings;
 use 5.018;
 
 use Future::AsyncAwait;
-use Future::IO::Redis::Error::Redis;
+use Async::Redis::Error::Redis;
 
 sub new {
     my ($class, %args) = @_;
@@ -230,10 +230,10 @@ async sub execute {
 
     # Apply key prefixing if configured
     if (defined $redis->{prefix} && $redis->{prefix} ne '') {
-        require Future::IO::Redis::KeyExtractor;
+        require Async::Redis::KeyExtractor;
         for my $cmd (@commands) {
             my ($name, @args) = @$cmd;
-            @args = Future::IO::Redis::KeyExtractor::apply_prefix(
+            @args = Async::Redis::KeyExtractor::apply_prefix(
                 $redis->{prefix}, $name, @args
             );
             @$cmd = ($name, @args);
@@ -252,7 +252,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Pipeline - Command pipelining
+Async::Redis::Pipeline - Command pipelining
 
 =head1 SYNOPSIS
 
@@ -282,16 +282,16 @@ Two distinct failure modes:
 =cut
 ```
 
-### Step 4: Add pipeline support to Future::IO::Redis
+### Step 4: Add pipeline support to Async::Redis
 
 Edit `lib/Future/IO/Redis.pm`:
 
 ```perl
-use Future::IO::Redis::Pipeline;
+use Async::Redis::Pipeline;
 
 sub pipeline {
     my ($self, %opts) = @_;
-    return Future::IO::Redis::Pipeline->new(
+    return Async::Redis::Pipeline->new(
         redis     => $self,
         max_depth => $opts{max_depth} // $self->{pipeline_depth} // 10000,
     );
@@ -320,7 +320,7 @@ async sub _execute_pipeline {
             my $error = $@;
 
             # Check if it's a Redis error (per-slot) vs transport error
-            if (ref $error && $error->isa('Future::IO::Redis::Error::Redis')) {
+            if (ref $error && $error->isa('Async::Redis::Error::Redis')) {
                 # Per-slot error - capture and continue
                 $results[$i] = $error;
             }
@@ -328,7 +328,7 @@ async sub _execute_pipeline {
                 # Transport error - abort entire pipeline
                 # Fail all remaining slots
                 for my $j ($i .. $#$commands) {
-                    $results[$j] = Future::IO::Redis::Error::Connection->new(
+                    $results[$j] = Async::Redis::Error::Connection->new(
                         message => "Pipeline aborted: $error",
                     );
                 }
@@ -356,13 +356,13 @@ Expected: PASS
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -429,13 +429,13 @@ done_testing;
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -456,7 +456,7 @@ SKIP: {
 
         # Second command should be an error object
         ok(ref $results->[1], 'second result is reference');
-        ok($results->[1]->isa('Future::IO::Redis::Error') ||
+        ok($results->[1]->isa('Async::Redis::Error') ||
            "$results->[1]" =~ /WRONGTYPE/i,
            'WRONGTYPE error captured');
 
@@ -504,7 +504,7 @@ SKIP: {
         for my $i (0 .. $#$results) {
             my $r = $results->[$i];
             if (ref $r && (
-                $r->isa('Future::IO::Redis::Error') ||
+                $r->isa('Async::Redis::Error') ||
                 "$r" =~ /ERR|WRONGTYPE/i
             )) {
                 push @errors, { index => $i, error => $r };
@@ -549,14 +549,14 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time);
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -641,13 +641,13 @@ done_testing;
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => 'localhost',
             connect_timeout => 2,
             pipeline_depth => 100,  # Low limit for testing
@@ -773,14 +773,14 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time);
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => 'localhost',
             connect_timeout => 2,
             auto_pipeline => 1,
@@ -823,7 +823,7 @@ SKIP: {
     subtest 'auto-pipeline faster than sequential' => sub {
         # Compare auto-pipelined to non-pipelined
 
-        my $redis_no_ap = Future::IO::Redis->new(
+        my $redis_no_ap = Async::Redis->new(
             host => 'localhost',
             auto_pipeline => 0,  # disabled
         );
@@ -850,7 +850,7 @@ SKIP: {
     };
 
     subtest 'auto-pipeline respects depth limit' => sub {
-        my $redis_limited = Future::IO::Redis->new(
+        my $redis_limited = Async::Redis->new(
             host => 'localhost',
             auto_pipeline => 1,
             pipeline_depth => 50,
@@ -930,7 +930,7 @@ Expected: FAIL (auto_pipeline not implemented)
 
 ```perl
 # lib/Future/IO/Redis/AutoPipeline.pm
-package Future::IO::Redis::AutoPipeline;
+package Async::Redis::AutoPipeline;
 
 use strict;
 use warnings;
@@ -1022,7 +1022,7 @@ sub _send_batch {
             my $result = $results->[$i];
             my $future = $futures[$i];
 
-            if (ref $result && $result->isa('Future::IO::Redis::Error')) {
+            if (ref $result && $result->isa('Async::Redis::Error')) {
                 $future->fail($result);
             }
             else {
@@ -1045,7 +1045,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::AutoPipeline - Automatic command batching
+Async::Redis::AutoPipeline - Automatic command batching
 
 =head1 DESCRIPTION
 
@@ -1079,12 +1079,12 @@ When `auto_pipeline => 1`:
 =cut
 ```
 
-### Step 4: Integrate auto_pipeline into Future::IO::Redis
+### Step 4: Integrate auto_pipeline into Async::Redis
 
 Edit `lib/Future/IO/Redis.pm`:
 
 ```perl
-use Future::IO::Redis::AutoPipeline;
+use Async::Redis::AutoPipeline;
 
 # In new():
 auto_pipeline  => $args{auto_pipeline} // 0,
@@ -1092,7 +1092,7 @@ pipeline_depth => $args{pipeline_depth} // 1000,
 
 # In connect() or after connection established:
 if ($self->{auto_pipeline}) {
-    $self->{_auto_pipeline} = Future::IO::Redis::AutoPipeline->new(
+    $self->{_auto_pipeline} = Async::Redis::AutoPipeline->new(
         redis     => $self,
         max_depth => $self->{pipeline_depth},
     );
@@ -1141,7 +1141,7 @@ AutoPipeline.pm:
 - Same API as non-pipelined client
 
 Activation:
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         auto_pipeline => 1,
         pipeline_depth => 1000,  # max batch size
     );

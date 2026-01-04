@@ -1,4 +1,4 @@
-# Future::IO::Redis Implementation Plan
+# Async::Redis Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -43,67 +43,67 @@
 ```perl
 # t/01-unit/error.t
 use Test2::V0;
-use Future::IO::Redis::Error;
-use Future::IO::Redis::Error::Connection;
-use Future::IO::Redis::Error::Timeout;
-use Future::IO::Redis::Error::Protocol;
-use Future::IO::Redis::Error::Redis;
-use Future::IO::Redis::Error::Disconnected;
+use Async::Redis::Error;
+use Async::Redis::Error::Connection;
+use Async::Redis::Error::Timeout;
+use Async::Redis::Error::Protocol;
+use Async::Redis::Error::Redis;
+use Async::Redis::Error::Disconnected;
 
 subtest 'Error base class' => sub {
-    my $e = Future::IO::Redis::Error->new(message => 'test error');
-    ok($e->isa('Future::IO::Redis::Error'), 'isa Error');
+    my $e = Async::Redis::Error->new(message => 'test error');
+    ok($e->isa('Async::Redis::Error'), 'isa Error');
     is($e->message, 'test error', 'message accessor');
     like("$e", qr/test error/, 'stringifies');
 };
 
 subtest 'Connection error' => sub {
-    my $e = Future::IO::Redis::Error::Connection->new(
+    my $e = Async::Redis::Error::Connection->new(
         message => 'connection lost',
         host    => 'localhost',
         port    => 6379,
     );
-    ok($e->isa('Future::IO::Redis::Error'), 'isa base Error');
-    ok($e->isa('Future::IO::Redis::Error::Connection'), 'isa Connection');
+    ok($e->isa('Async::Redis::Error'), 'isa base Error');
+    ok($e->isa('Async::Redis::Error::Connection'), 'isa Connection');
     is($e->host, 'localhost', 'host accessor');
     is($e->port, 6379, 'port accessor');
 };
 
 subtest 'Timeout error' => sub {
-    my $e = Future::IO::Redis::Error::Timeout->new(
+    my $e = Async::Redis::Error::Timeout->new(
         message => 'request timed out',
         command => ['GET', 'key'],
         timeout => 5,
     );
-    ok($e->isa('Future::IO::Redis::Error::Timeout'), 'isa Timeout');
+    ok($e->isa('Async::Redis::Error::Timeout'), 'isa Timeout');
     is_deeply($e->command, ['GET', 'key'], 'command accessor');
     is($e->timeout, 5, 'timeout accessor');
 };
 
 subtest 'Protocol error' => sub {
-    my $e = Future::IO::Redis::Error::Protocol->new(
+    my $e = Async::Redis::Error::Protocol->new(
         message => 'unexpected response type',
         data    => '+OK',
     );
-    ok($e->isa('Future::IO::Redis::Error::Protocol'), 'isa Protocol');
+    ok($e->isa('Async::Redis::Error::Protocol'), 'isa Protocol');
 };
 
 subtest 'Redis error' => sub {
-    my $e = Future::IO::Redis::Error::Redis->new(
+    my $e = Async::Redis::Error::Redis->new(
         message => 'WRONGTYPE Operation against a key holding the wrong kind of value',
         type    => 'WRONGTYPE',
     );
-    ok($e->isa('Future::IO::Redis::Error::Redis'), 'isa Redis');
+    ok($e->isa('Async::Redis::Error::Redis'), 'isa Redis');
     is($e->type, 'WRONGTYPE', 'error type parsed');
     ok($e->is_wrongtype, 'is_wrongtype predicate');
     ok(!$e->is_oom, 'is_oom false for WRONGTYPE');
 };
 
 subtest 'Disconnected error' => sub {
-    my $e = Future::IO::Redis::Error::Disconnected->new(
+    my $e = Async::Redis::Error::Disconnected->new(
         message => 'command queue full',
     );
-    ok($e->isa('Future::IO::Redis::Error::Disconnected'), 'isa Disconnected');
+    ok($e->isa('Async::Redis::Error::Disconnected'), 'isa Disconnected');
 };
 
 done_testing;
@@ -118,7 +118,7 @@ Expected: FAIL with "Can't locate Future/IO/Redis/Error.pm"
 
 ```perl
 # lib/Future/IO/Redis/Error.pm
-package Future::IO::Redis::Error;
+package Async::Redis::Error;
 
 use strict;
 use warnings;
@@ -151,12 +151,12 @@ sub throw {
 
 ```perl
 # lib/Future/IO/Redis/Error/Connection.pm
-package Future::IO::Redis::Error::Connection;
+package Async::Redis::Error::Connection;
 
 use strict;
 use warnings;
 use 5.018;
-use parent 'Future::IO::Redis::Error';
+use parent 'Async::Redis::Error';
 
 sub host { shift->{host} }
 sub port { shift->{port} }
@@ -169,12 +169,12 @@ sub reason { shift->{reason} }
 
 ```perl
 # lib/Future/IO/Redis/Error/Timeout.pm
-package Future::IO::Redis::Error::Timeout;
+package Async::Redis::Error::Timeout;
 
 use strict;
 use warnings;
 use 5.018;
-use parent 'Future::IO::Redis::Error';
+use parent 'Async::Redis::Error';
 
 sub command { shift->{command} }
 sub timeout { shift->{timeout} }
@@ -187,12 +187,12 @@ sub maybe_executed { shift->{maybe_executed} }
 
 ```perl
 # lib/Future/IO/Redis/Error/Protocol.pm
-package Future::IO::Redis::Error::Protocol;
+package Async::Redis::Error::Protocol;
 
 use strict;
 use warnings;
 use 5.018;
-use parent 'Future::IO::Redis::Error';
+use parent 'Async::Redis::Error';
 
 sub data { shift->{data} }
 
@@ -203,12 +203,12 @@ sub data { shift->{data} }
 
 ```perl
 # lib/Future/IO/Redis/Error/Redis.pm
-package Future::IO::Redis::Error::Redis;
+package Async::Redis::Error::Redis;
 
 use strict;
 use warnings;
 use 5.018;
-use parent 'Future::IO::Redis::Error';
+use parent 'Async::Redis::Error';
 
 sub type { shift->{type} }
 
@@ -233,12 +233,12 @@ sub is_fatal {
 
 ```perl
 # lib/Future/IO/Redis/Error/Disconnected.pm
-package Future::IO::Redis::Error::Disconnected;
+package Async::Redis::Error::Disconnected;
 
 use strict;
 use warnings;
 use 5.018;
-use parent 'Future::IO::Redis::Error';
+use parent 'Async::Redis::Error';
 
 1;
 ```
@@ -287,10 +287,10 @@ EOF
 ```perl
 # t/01-unit/uri.t
 use Test2::V0;
-use Future::IO::Redis::URI;
+use Async::Redis::URI;
 
 subtest 'basic redis URI' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://localhost');
+    my $uri = Async::Redis::URI->parse('redis://localhost');
     is($uri->host, 'localhost', 'host');
     is($uri->port, 6379, 'default port');
     is($uri->database, 0, 'default database');
@@ -299,30 +299,30 @@ subtest 'basic redis URI' => sub {
 };
 
 subtest 'redis URI with port' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://localhost:6380');
+    my $uri = Async::Redis::URI->parse('redis://localhost:6380');
     is($uri->host, 'localhost', 'host');
     is($uri->port, 6380, 'custom port');
 };
 
 subtest 'redis URI with password' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://:secret@localhost');
+    my $uri = Async::Redis::URI->parse('redis://:secret@localhost');
     is($uri->password, 'secret', 'password parsed');
     ok(!$uri->username, 'no username');
 };
 
 subtest 'redis URI with username and password (ACL)' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://user:pass@localhost');
+    my $uri = Async::Redis::URI->parse('redis://user:pass@localhost');
     is($uri->username, 'user', 'username');
     is($uri->password, 'pass', 'password');
 };
 
 subtest 'redis URI with database' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://localhost/5');
+    my $uri = Async::Redis::URI->parse('redis://localhost/5');
     is($uri->database, 5, 'database from path');
 };
 
 subtest 'full redis URI' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://user:pass@redis.example.com:6380/2');
+    my $uri = Async::Redis::URI->parse('redis://user:pass@redis.example.com:6380/2');
     is($uri->host, 'redis.example.com', 'host');
     is($uri->port, 6380, 'port');
     is($uri->username, 'user', 'username');
@@ -331,27 +331,27 @@ subtest 'full redis URI' => sub {
 };
 
 subtest 'rediss (TLS) URI' => sub {
-    my $uri = Future::IO::Redis::URI->parse('rediss://localhost:6380');
+    my $uri = Async::Redis::URI->parse('rediss://localhost:6380');
     ok($uri->tls, 'tls enabled');
     is($uri->port, 6380, 'port');
 };
 
 subtest 'unix socket URI' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis+unix:///var/run/redis.sock');
+    my $uri = Async::Redis::URI->parse('redis+unix:///var/run/redis.sock');
     is($uri->path, '/var/run/redis.sock', 'socket path');
     ok($uri->is_unix, 'is unix socket');
 };
 
 subtest 'unix socket with database' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis+unix:///var/run/redis.sock?db=3');
+    my $uri = Async::Redis::URI->parse('redis+unix:///var/run/redis.sock?db=3');
     is($uri->path, '/var/run/redis.sock', 'socket path');
     is($uri->database, 3, 'database from query');
 };
 
 subtest 'invalid URI throws' => sub {
-    ok(dies { Future::IO::Redis::URI->parse('http://localhost') },
+    ok(dies { Async::Redis::URI->parse('http://localhost') },
        'non-redis scheme throws');
-    ok(dies { Future::IO::Redis::URI->parse('not a uri') },
+    ok(dies { Async::Redis::URI->parse('not a uri') },
        'invalid format throws');
 };
 
@@ -367,7 +367,7 @@ Expected: FAIL with "Can't locate Future/IO/Redis/URI.pm"
 
 ```perl
 # lib/Future/IO/Redis/URI.pm
-package Future::IO::Redis::URI;
+package Async::Redis::URI;
 
 use strict;
 use warnings;
@@ -509,8 +509,8 @@ EOF
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
-use Future::IO::Redis::Error::Timeout;
+use Async::Redis;
+use Async::Redis::Error::Timeout;
 use Time::HiRes qw(time);
 
 my $loop = IO::Async::Loop->new;
@@ -518,7 +518,7 @@ my $loop = IO::Async::Loop->new;
 subtest 'connect timeout fires on unreachable host' => sub {
     my $start = time();
 
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host => '10.255.255.1',  # non-routable
         connect_timeout => 0.5,
     );
@@ -530,7 +530,7 @@ subtest 'connect timeout fires on unreachable host' => sub {
     my $elapsed = time() - $start;
 
     ok($error, 'connect failed');
-    ok($error->isa('Future::IO::Redis::Error::Timeout'), 'error is Timeout');
+    ok($error->isa('Async::Redis::Error::Timeout'), 'error is Timeout');
     ok($elapsed < 1.0, "timed out quickly (${elapsed}s < 1.0s)");
 };
 
@@ -543,7 +543,7 @@ subtest 'event loop not blocked during connect timeout' => sub {
     $loop->add($timer);
     $timer->start;
 
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host => '10.255.255.1',
         connect_timeout => 0.3,
     );
@@ -559,14 +559,14 @@ subtest 'event loop not blocked during connect timeout' => sub {
 # Skip Redis-dependent tests if not available
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
     skip "Redis not available", 2 unless $redis;
 
     subtest 'request timeout fires on slow command' => sub {
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host => 'localhost',
             request_timeout => 0.5,
         );
@@ -582,12 +582,12 @@ SKIP: {
         my $elapsed = time() - $start;
 
         ok($error, 'command failed');
-        ok($error->isa('Future::IO::Redis::Error::Timeout'), 'error is Timeout');
+        ok($error->isa('Async::Redis::Error::Timeout'), 'error is Timeout');
         ok($elapsed < 1.0, "timed out at ${elapsed}s (expected ~0.5s)");
     };
 
     subtest 'request timeout respects blocking command buffer' => sub {
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host => 'localhost',
             request_timeout => 1,
             blocking_timeout_buffer => 1,
@@ -634,12 +634,12 @@ my $connect_f = Future::IO->connect($socket, $sockaddr)
     ->on_fail(sub {
         my ($failure) = @_;
         if ($failure =~ /timeout/i) {
-            die Future::IO::Redis::Error::Timeout->new(
+            die Async::Redis::Error::Timeout->new(
                 message => "Connect timed out after $self->{connect_timeout}s",
                 timeout => $self->{connect_timeout},
             );
         }
-        die Future::IO::Redis::Error::Connection->new(
+        die Async::Redis::Error::Connection->new(
             message => $failure,
             host    => $self->{host},
             port    => $self->{port},
@@ -680,7 +680,7 @@ sub _handle_timeout {
 
     # Fail the timed-out request
     $entry->{future}->fail(
-        Future::IO::Redis::Error::Timeout->new(
+        Async::Redis::Error::Timeout->new(
             message => "Request timed out after $self->{request_timeout}s",
             command => $entry->{command},
             timeout => $self->{request_timeout},
@@ -691,7 +691,7 @@ sub _handle_timeout {
     for my $e (@{$self->{inflight}}) {
         next if $e->{future}->is_ready;
         $e->{future}->fail(
-            Future::IO::Redis::Error::Connection->new(
+            Async::Redis::Error::Connection->new(
                 message => "Connection reset due to timeout",
             )
         );

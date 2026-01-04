@@ -1,4 +1,4 @@
-# Future::IO::Redis Phase 3: Transactions & Lua Scripting
+# Async::Redis Phase 3: Transactions & Lua Scripting
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -40,13 +40,13 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -157,7 +157,7 @@ Expected: FAIL (multi method not implemented)
 
 ```perl
 # lib/Future/IO/Redis/Transaction.pm
-package Future::IO::Redis::Transaction;
+package Async::Redis::Transaction;
 
 use strict;
 use warnings;
@@ -210,7 +210,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Transaction - Transaction command collector
+Async::Redis::Transaction - Transaction command collector
 
 =head1 DESCRIPTION
 
@@ -220,12 +220,12 @@ are queued locally and then sent as MULTI/commands.../EXEC.
 =cut
 ```
 
-### Step 4: Add multi() method to Future::IO::Redis
+### Step 4: Add multi() method to Async::Redis
 
 Edit `lib/Future/IO/Redis.pm` to add:
 
 ```perl
-use Future::IO::Redis::Transaction;
+use Async::Redis::Transaction;
 
 # Track transaction state
 # In new(): in_multi => 0,
@@ -234,7 +234,7 @@ async sub multi {
     my ($self, $callback) = @_;
 
     # Create transaction collector
-    my $tx = Future::IO::Redis::Transaction->new(redis => $self);
+    my $tx = Async::Redis::Transaction->new(redis => $self);
 
     # Run callback to collect commands
     await $callback->($tx);
@@ -297,13 +297,13 @@ Expected: PASS
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -371,7 +371,7 @@ SKIP: {
         await $redis->unwatch();
 
         # Now modify key from another connection
-        my $redis2 = Future::IO::Redis->new(host => 'localhost');
+        my $redis2 = Async::Redis->new(host => 'localhost');
         $loop->await($redis2->connect);
         $loop->await($redis2->set('watch:key', 'changed'));
 
@@ -446,7 +446,7 @@ async sub watch_multi {
     }
 
     # Create transaction collector
-    my $tx = Future::IO::Redis::Transaction->new(redis => $self);
+    my $tx = Async::Redis::Transaction->new(redis => $self);
 
     # Run callback with watched values
     await $callback->($tx, \%watched);
@@ -502,20 +502,20 @@ Expected: PASS
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
     skip "Redis not available: $@", 1 unless $redis;
 
     # Second connection to modify watched keys
-    my $redis2 = Future::IO::Redis->new(host => 'localhost');
+    my $redis2 = Async::Redis->new(host => 'localhost');
     $loop->await($redis2->connect);
 
     # Cleanup
@@ -619,13 +619,13 @@ Expected: PASS
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -702,13 +702,13 @@ Expected: PASS
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -830,13 +830,13 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -977,14 +977,14 @@ Expected: PASS (eval should already work via command())
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 use Digest::SHA qw(sha1_hex);
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -1044,7 +1044,7 @@ SKIP: {
 done_testing;
 ```
 
-### Step 4: Add script helper methods to Future::IO::Redis
+### Step 4: Add script helper methods to Async::Redis
 
 Edit `lib/Future/IO/Redis.pm`:
 
@@ -1084,14 +1084,14 @@ Expected: PASS
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 use Digest::SHA qw(sha1_hex);
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -1160,7 +1160,7 @@ done_testing;
 Edit `lib/Future/IO/Redis.pm`:
 
 ```perl
-use Future::IO::Redis::Error::Redis;
+use Async::Redis::Error::Redis;
 
 async sub evalsha_or_eval {
     my ($self, $sha, $script, $numkeys, @keys_and_args) = @_;
@@ -1206,13 +1206,13 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -1290,7 +1290,7 @@ LUA
     };
 
     subtest 'script with prefix' => sub {
-        my $prefixed = Future::IO::Redis->new(
+        my $prefixed = Async::Redis->new(
             host => 'localhost',
             prefix => 'pfx:',
         );
@@ -1305,7 +1305,7 @@ LUA
         is($result, 'myvalue', 'script executed');
 
         # Verify key was actually prefixed
-        my $raw = Future::IO::Redis->new(host => 'localhost');
+        my $raw = Async::Redis->new(host => 'localhost');
         $loop->await($raw->connect);
         my $value = $loop->await($raw->get('pfx:mykey'));
         is($value, 'myvalue', 'key was prefixed');
@@ -1346,7 +1346,7 @@ done_testing;
 
 ```perl
 # lib/Future/IO/Redis/Script.pm
-package Future::IO::Redis::Script;
+package Async::Redis::Script;
 
 use strict;
 use warnings;
@@ -1413,7 +1413,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Script - Reusable Lua script wrapper
+Async::Redis::Script - Reusable Lua script wrapper
 
 =head1 SYNOPSIS
 
@@ -1440,16 +1440,16 @@ Script objects wrap Lua scripts for reuse. They:
 =cut
 ```
 
-### Step 11: Add script() method to Future::IO::Redis
+### Step 11: Add script() method to Async::Redis
 
 Edit `lib/Future/IO/Redis.pm`:
 
 ```perl
-use Future::IO::Redis::Script;
+use Async::Redis::Script;
 
 sub script {
     my ($self, $code) = @_;
-    return Future::IO::Redis::Script->new(
+    return Async::Redis::Script->new(
         redis  => $self,
         script => $code,
     );

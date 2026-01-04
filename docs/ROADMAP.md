@@ -1,4 +1,4 @@
-# Future::IO::Redis Production Roadmap
+# Async::Redis Production Roadmap
 
 ## Current State (v0.001 - Sketch)
 
@@ -19,7 +19,7 @@ Missing for production use:
 ### 1.1 Timeouts
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     host => 'localhost',
     connect_timeout => 5,      # seconds
     read_timeout    => 30,
@@ -34,7 +34,7 @@ Implementation:
 ### 1.2 Automatic Reconnection
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     reconnect          => 1,           # enable
     reconnect_interval => 0.5,         # initial delay
     reconnect_max      => 60,          # max delay (exponential backoff)
@@ -55,7 +55,7 @@ Implementation:
 ### 1.3 Connection Events
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     on_connect => sub {
         my ($redis) = @_;
         $redis->select(1);           # switch database
@@ -80,12 +80,12 @@ my $redis = Future::IO::Redis->new(
 
 ```perl
 # Simple password (Redis < 6)
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     password => 'secret',
 );
 
 # ACL (Redis 6+)
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     username => 'myuser',
     password => 'secret',
 );
@@ -98,7 +98,7 @@ Implementation:
 ### 2.2 TLS/SSL
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     host => 'redis.example.com',
     port => 6380,
     tls  => 1,
@@ -124,7 +124,7 @@ Implementation:
 ### 3.1 Sentinel Support
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     sentinels => [
         'sentinel1.example.com:26379',
         'sentinel2.example.com:26379',
@@ -144,7 +144,7 @@ Implementation:
 ### 3.2 Connection Pool
 
 ```perl
-my $pool = Future::IO::Redis::Pool->new(
+my $pool = Async::Redis::Pool->new(
     host         => 'localhost',
     min_size     => 2,
     max_size     => 10,
@@ -240,7 +240,7 @@ my $result = await $redis->evalsha_or_eval($sha, $lua_code, 1, 'mykey');
 ### 5.1 RESP3 Protocol
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     protocol => 3,  # RESP3
 );
 
@@ -276,7 +276,7 @@ await $redis->xack('mystream', 'mygroup', @ids);
 ### 5.3 Cluster Support
 
 ```perl
-my $cluster = Future::IO::Redis::Cluster->new(
+my $cluster = Async::Redis::Cluster->new(
     nodes => [
         'node1.example.com:7000',
         'node2.example.com:7001',
@@ -300,7 +300,7 @@ await $cluster->set('{user:1}:email', 'alice@example.com');
 ### 6.1 Metrics
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     metrics => My::Metrics->new,  # interface
 );
 
@@ -315,7 +315,7 @@ my $redis = Future::IO::Redis->new(
 ### 6.2 Tracing
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     tracer => My::OpenTelemetry::Tracer->new,
 );
 

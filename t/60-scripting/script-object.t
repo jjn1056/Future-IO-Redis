@@ -2,13 +2,13 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
-use Future::IO::Redis;
+use Async::Redis;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost', connect_timeout => 2);
         run { $r->connect };
         $r;
     };
@@ -86,7 +86,7 @@ LUA
     };
 
     subtest 'script with prefix' => sub {
-        my $prefixed = Future::IO::Redis->new(
+        my $prefixed = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             prefix => 'pfx:',
         );
@@ -101,7 +101,7 @@ LUA
         is($result, 'myvalue', 'script executed');
 
         # Verify key was actually prefixed
-        my $raw = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
+        my $raw = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
         run { $raw->connect };
         my $value = run { $raw->get('pfx:mykey') };
         is($value, 'myvalue', 'key was prefixed');

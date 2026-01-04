@@ -1,4 +1,4 @@
-package Test::Future::IO::Redis;
+package Test::Async::Redis;
 
 use strict;
 use warnings;
@@ -9,7 +9,7 @@ use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use IO::Async::Process;
 use Future::IO;
-use Future::IO::Redis;
+use Async::Redis;
 
 # For testing, we use IO::Async as our concrete event loop.
 Future::IO->load_impl('IOAsync');
@@ -46,7 +46,7 @@ our @EXPORT_OK = qw(
 
 our %EXPORT_TAGS = (
     # Import with :redis to auto-skip if Redis unavailable
-    # Usage: use Test::Future::IO::Redis ':redis';
+    # Usage: use Test::Async::Redis ':redis';
     redis => [qw(init_loop get_loop run await_f skip_without_redis cleanup_keys delay redis_host redis_port)],
 );
 
@@ -121,7 +121,7 @@ sub await_f {
 # Check Redis at import time (called from import)
 sub _check_redis {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => redis_host(),
             port => redis_port(),
             connect_timeout => 2,
@@ -141,7 +141,7 @@ sub skip_without_redis {
     return $test_redis if $test_redis;
 
     my $redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => redis_host(),
             port => redis_port(),
             connect_timeout => 2,
@@ -252,19 +252,19 @@ __END__
 
 =head1 NAME
 
-Test::Future::IO::Redis - Test utilities for Future::IO::Redis
+Test::Async::Redis - Test utilities for Async::Redis
 
 =head1 SYNOPSIS
 
     use Test::Lib;
-    use Test::Future::IO::Redis ':redis';
+    use Test::Async::Redis ':redis';
     use Future::AsyncAwait;
 
     # Tests auto-skip if Redis unavailable
     # Use run {} to execute async code in tests:
 
     my $result = run {
-        my $redis = Future::IO::Redis->new;
+        my $redis = Async::Redis->new;
         await $redis->connect;
         await $redis->set('key', 'value');
         await $redis->get('key');
@@ -278,7 +278,7 @@ Test::Future::IO::Redis - Test utilities for Future::IO::Redis
 
 =head1 DESCRIPTION
 
-Test utilities for Future::IO::Redis using async/await.
+Test utilities for Async::Redis using async/await.
 
 =head1 FUNCTIONS
 
@@ -292,7 +292,7 @@ test helper - wrap any async operations in run { }.
 =item skip_without_redis()
 
 Skip all tests if Redis is not available. Returns a connected
-Future::IO::Redis object if successful.
+Async::Redis object if successful.
 
 =item cleanup_keys($redis, $pattern)
 

@@ -3,10 +3,10 @@ use strict;
 use warnings;
 use Test2::V0;
 
-use Future::IO::Redis::URI;
+use Async::Redis::URI;
 
 subtest 'basic redis URI' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://localhost');
+    my $uri = Async::Redis::URI->parse('redis://localhost');
     is($uri->scheme, 'redis', 'scheme');
     is($uri->host, 'localhost', 'host');
     is($uri->port, 6379, 'default port');
@@ -18,36 +18,36 @@ subtest 'basic redis URI' => sub {
 };
 
 subtest 'redis URI with port' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://localhost:6380');
+    my $uri = Async::Redis::URI->parse('redis://localhost:6380');
     is($uri->host, 'localhost', 'host');
     is($uri->port, 6380, 'custom port');
 };
 
 subtest 'redis URI with password only' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://:secret@localhost');
+    my $uri = Async::Redis::URI->parse('redis://:secret@localhost');
     is($uri->password, 'secret', 'password parsed');
     ok(!$uri->username, 'no username');
     is($uri->host, 'localhost', 'host');
 };
 
 subtest 'redis URI with username and password (ACL)' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://myuser:mypass@localhost');
+    my $uri = Async::Redis::URI->parse('redis://myuser:mypass@localhost');
     is($uri->username, 'myuser', 'username');
     is($uri->password, 'mypass', 'password');
 };
 
 subtest 'redis URI with database' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://localhost/5');
+    my $uri = Async::Redis::URI->parse('redis://localhost/5');
     is($uri->database, 5, 'database from path');
 };
 
 subtest 'redis URI with database 0 explicit' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://localhost/0');
+    my $uri = Async::Redis::URI->parse('redis://localhost/0');
     is($uri->database, 0, 'database 0 explicit');
 };
 
 subtest 'full redis URI' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://admin:secret123@redis.example.com:6380/2');
+    my $uri = Async::Redis::URI->parse('redis://admin:secret123@redis.example.com:6380/2');
     is($uri->scheme, 'redis', 'scheme');
     is($uri->host, 'redis.example.com', 'host');
     is($uri->port, 6380, 'port');
@@ -58,14 +58,14 @@ subtest 'full redis URI' => sub {
 };
 
 subtest 'rediss (TLS) URI' => sub {
-    my $uri = Future::IO::Redis::URI->parse('rediss://localhost:6380');
+    my $uri = Async::Redis::URI->parse('rediss://localhost:6380');
     is($uri->scheme, 'rediss', 'scheme');
     ok($uri->tls, 'tls enabled');
     is($uri->port, 6380, 'port');
 };
 
 subtest 'rediss with auth' => sub {
-    my $uri = Future::IO::Redis::URI->parse('rediss://user:pass@secure.redis.io');
+    my $uri = Async::Redis::URI->parse('rediss://user:pass@secure.redis.io');
     ok($uri->tls, 'tls enabled');
     is($uri->username, 'user', 'username');
     is($uri->password, 'pass', 'password');
@@ -73,7 +73,7 @@ subtest 'rediss with auth' => sub {
 };
 
 subtest 'unix socket URI' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis+unix:///var/run/redis.sock');
+    my $uri = Async::Redis::URI->parse('redis+unix:///var/run/redis.sock');
     is($uri->scheme, 'redis+unix', 'scheme');
     is($uri->path, '/var/run/redis.sock', 'socket path');
     ok($uri->is_unix, 'is unix socket');
@@ -81,36 +81,36 @@ subtest 'unix socket URI' => sub {
 };
 
 subtest 'unix socket with password' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis+unix://:secret@/var/run/redis.sock');
+    my $uri = Async::Redis::URI->parse('redis+unix://:secret@/var/run/redis.sock');
     is($uri->path, '/var/run/redis.sock', 'socket path');
     is($uri->password, 'secret', 'password');
     ok($uri->is_unix, 'is unix socket');
 };
 
 subtest 'unix socket with database query param' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis+unix:///var/run/redis.sock?db=3');
+    my $uri = Async::Redis::URI->parse('redis+unix:///var/run/redis.sock?db=3');
     is($uri->path, '/var/run/redis.sock', 'socket path');
     is($uri->database, 3, 'database from query');
 };
 
 subtest 'unix socket with multiple query params' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis+unix:///run/redis.sock?db=5&timeout=10');
+    my $uri = Async::Redis::URI->parse('redis+unix:///run/redis.sock?db=5&timeout=10');
     is($uri->database, 5, 'database');
     # timeout would be handled by caller, not URI parser
 };
 
 subtest 'URL-encoded password' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://:p%40ss%3Aword@localhost');
+    my $uri = Async::Redis::URI->parse('redis://:p%40ss%3Aword@localhost');
     is($uri->password, 'p@ss:word', 'password URL-decoded');
 };
 
 subtest 'URL-encoded username' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://user%40domain:pass@localhost');
+    my $uri = Async::Redis::URI->parse('redis://user%40domain:pass@localhost');
     is($uri->username, 'user@domain', 'username URL-decoded');
 };
 
 subtest 'to_hash for constructor' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis://user:pass@localhost:6380/2');
+    my $uri = Async::Redis::URI->parse('redis://user:pass@localhost:6380/2');
     my %hash = $uri->to_hash;
 
     is($hash{host}, 'localhost', 'host');
@@ -122,14 +122,14 @@ subtest 'to_hash for constructor' => sub {
 };
 
 subtest 'to_hash with TLS' => sub {
-    my $uri = Future::IO::Redis::URI->parse('rediss://localhost');
+    my $uri = Async::Redis::URI->parse('rediss://localhost');
     my %hash = $uri->to_hash;
 
     is($hash{tls}, 1, 'tls in hash');
 };
 
 subtest 'to_hash for unix socket' => sub {
-    my $uri = Future::IO::Redis::URI->parse('redis+unix:///var/run/redis.sock?db=1');
+    my $uri = Async::Redis::URI->parse('redis+unix:///var/run/redis.sock?db=1');
     my %hash = $uri->to_hash;
 
     is($hash{path}, '/var/run/redis.sock', 'path');
@@ -139,22 +139,22 @@ subtest 'to_hash for unix socket' => sub {
 };
 
 subtest 'invalid URI - bad scheme' => sub {
-    ok(dies { Future::IO::Redis::URI->parse('http://localhost') },
+    ok(dies { Async::Redis::URI->parse('http://localhost') },
        'http scheme rejected');
-    ok(dies { Future::IO::Redis::URI->parse('mysql://localhost') },
+    ok(dies { Async::Redis::URI->parse('mysql://localhost') },
        'mysql scheme rejected');
 };
 
 subtest 'invalid URI - malformed' => sub {
-    ok(dies { Future::IO::Redis::URI->parse('not a uri at all') },
+    ok(dies { Async::Redis::URI->parse('not a uri at all') },
        'garbage rejected');
-    ok(dies { Future::IO::Redis::URI->parse('redis://') },
+    ok(dies { Async::Redis::URI->parse('redis://') },
        'empty host rejected');
 };
 
 subtest 'parse returns undef for empty/undef' => sub {
-    is(Future::IO::Redis::URI->parse(''), undef, 'empty string');
-    is(Future::IO::Redis::URI->parse(undef), undef, 'undef');
+    is(Async::Redis::URI->parse(''), undef, 'empty string');
+    is(Async::Redis::URI->parse(undef), undef, 'undef');
 };
 
 done_testing;

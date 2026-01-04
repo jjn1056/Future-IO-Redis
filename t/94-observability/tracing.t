@@ -2,7 +2,7 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
 
 # Mock OpenTelemetry tracer
@@ -54,11 +54,11 @@ package MockTracer {
 
 package main;
 
-use Future::IO::Redis;
+use Async::Redis;
 
 SKIP: {
     my $test_redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
         );
@@ -70,7 +70,7 @@ SKIP: {
     subtest 'tracer creates spans for commands' => sub {
         my $tracer = MockTracer->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host        => $ENV{REDIS_HOST} // 'localhost',
             otel_tracer => $tracer,
         );
@@ -103,7 +103,7 @@ SKIP: {
     subtest 'span records error on command failure' => sub {
         my $tracer = MockTracer->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host        => $ENV{REDIS_HOST} // 'localhost',
             otel_tracer => $tracer,
         );
@@ -127,7 +127,7 @@ SKIP: {
 
     subtest 'AUTH password redacted in span' => sub {
         # Test the redaction directly via Telemetry module
-        my $formatted = Future::IO::Redis::Telemetry::format_command_for_span(
+        my $formatted = Async::Redis::Telemetry::format_command_for_span(
             1, 1, 'AUTH', 'secret123'
         );
         unlike($formatted, qr/secret123/, 'password not in span');
@@ -137,7 +137,7 @@ SKIP: {
     subtest 'span includes database index' => sub {
         my $tracer = MockTracer->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host        => $ENV{REDIS_HOST} // 'localhost',
             otel_tracer => $tracer,
             database    => 2,
@@ -155,7 +155,7 @@ SKIP: {
     subtest 'otel_include_args => 0 hides args' => sub {
         my $tracer = MockTracer->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host              => $ENV{REDIS_HOST} // 'localhost',
             otel_tracer       => $tracer,
             otel_include_args => 0,
@@ -174,7 +174,7 @@ SKIP: {
     subtest 'span kind is client' => sub {
         my $tracer = MockTracer->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host        => $ENV{REDIS_HOST} // 'localhost',
             otel_tracer => $tracer,
         );

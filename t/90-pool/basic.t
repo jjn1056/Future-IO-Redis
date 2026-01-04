@@ -2,16 +2,16 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
-use Future::IO::Redis::Pool;
+use Async::Redis::Pool;
 use Time::HiRes qw(time);
 
 SKIP: {
     # Verify Redis is available
     my $test_redis = eval {
-        require Future::IO::Redis;
-        my $r = Future::IO::Redis->new(
+        require Async::Redis;
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
         );
@@ -22,7 +22,7 @@ SKIP: {
     $test_redis->disconnect;
 
     subtest 'pool creation' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             min  => 2,
             max  => 5,
@@ -34,7 +34,7 @@ SKIP: {
     };
 
     subtest 'acquire and release' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             min  => 1,
             max  => 3,
@@ -42,7 +42,7 @@ SKIP: {
 
         my $conn = run { $pool->acquire };
         ok($conn, 'acquired connection');
-        ok($conn->isa('Future::IO::Redis'), 'connection is Redis object');
+        ok($conn->isa('Async::Redis'), 'connection is Redis object');
 
         # Use connection
         my $result = run { $conn->ping };
@@ -57,7 +57,7 @@ SKIP: {
     };
 
     subtest 'acquire returns same connection' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             min  => 1,
             max  => 3,
@@ -76,7 +76,7 @@ SKIP: {
     };
 
     subtest 'multiple acquires up to max' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             min  => 0,
             max  => 3,
@@ -103,7 +103,7 @@ SKIP: {
     };
 
     subtest 'acquire blocks when pool exhausted' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host            => $ENV{REDIS_HOST} // 'localhost',
             max             => 1,
             acquire_timeout => 1,

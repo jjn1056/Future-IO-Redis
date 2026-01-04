@@ -1,4 +1,4 @@
-# Multi-Worker Chat with PAGI + Future::IO::Redis
+# Multi-Worker Chat with PAGI + Async::Redis
 
 This is a port of PAGI's `websocket-chat-v2` example, adapted to use **Redis** for state management and **PubSub** for cross-worker broadcasting.
 
@@ -114,7 +114,7 @@ worker processes.
 
 ## What This Demonstrates
 
-- **Future::IO::Redis** working with PAGI
+- **Async::Redis** working with PAGI
 - **Fork-safe connections** - each worker creates its own Redis connections
 - **PubSub** for real-time cross-worker message delivery
 - **Redis data structures** for shared state (hashes, sets, lists)
@@ -149,6 +149,6 @@ examples/pagi-chat/
 ## Requirements
 
 - PAGI (0.001+)
-- Future::IO::Redis
+- Async::Redis
 - Redis server
 - JSON::MaybeXS

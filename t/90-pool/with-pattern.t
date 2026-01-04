@@ -2,16 +2,16 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Future::AsyncAwait;
 use Test2::V0;
-use Future::IO::Redis::Pool;
+use Async::Redis::Pool;
 use Future;
 
 SKIP: {
     my $test_redis = eval {
-        require Future::IO::Redis;
-        my $r = Future::IO::Redis->new(
+        require Async::Redis;
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
         );
@@ -21,7 +21,7 @@ SKIP: {
     skip "Redis not available: $@", 1 unless $test_redis;
     $test_redis->disconnect;
 
-    my $pool = Future::IO::Redis::Pool->new(
+    my $pool = Async::Redis::Pool->new(
         host => $ENV{REDIS_HOST} // 'localhost',
         min  => 1,
         max  => 3,

@@ -2,9 +2,9 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time);
 
 # Helper: await a Future and return its result (throws on failure)
@@ -15,7 +15,7 @@ subtest 'TLS module availability' => sub {
 };
 
 subtest 'constructor accepts TLS parameters' => sub {
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host => 'localhost',
         tls  => 1,
     );
@@ -24,7 +24,7 @@ subtest 'constructor accepts TLS parameters' => sub {
 };
 
 subtest 'TLS with options hash' => sub {
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host => 'localhost',
         tls  => {
             ca_file   => '/path/to/ca.crt',
@@ -39,7 +39,7 @@ subtest 'TLS with options hash' => sub {
 };
 
 subtest 'rediss URI enables TLS' => sub {
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         uri => 'rediss://localhost:6380',
     );
 
@@ -51,7 +51,7 @@ SKIP: {
     skip "IO::Socket::SSL not available", 1 unless $has_ssl;
 
     subtest 'TLS without server fails gracefully' => sub {
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host            => 'localhost',
             port            => 16380,  # unlikely to have TLS Redis here
             tls             => 1,
@@ -77,7 +77,7 @@ SKIP: {
     skip "IO::Socket::SSL not available", 3 unless $has_ssl;
 
     subtest 'TLS connection works' => sub {
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host => $ENV{TLS_REDIS_HOST},
             port => $ENV{TLS_REDIS_PORT},
             tls  => {
@@ -101,7 +101,7 @@ SKIP: {
         get_loop()->add($timer);
         $timer->start;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host            => $ENV{TLS_REDIS_HOST},
             port            => $ENV{TLS_REDIS_PORT},
             tls             => { verify => 0 },
@@ -131,7 +131,7 @@ SKIP: {
         skip "Set TLS_REDIS_PASS to test TLS+auth", 1
             unless $ENV{TLS_REDIS_PASS};
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host     => $ENV{TLS_REDIS_HOST},
             port     => $ENV{TLS_REDIS_PORT},
             tls      => { verify => 0 },

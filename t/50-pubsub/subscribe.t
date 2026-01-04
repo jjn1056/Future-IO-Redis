@@ -2,15 +2,15 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Future::AsyncAwait;
 use Test2::V0;
-use Future::IO::Redis;
+use Async::Redis;
 use Future;
 
 SKIP: {
     my $publisher = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
         );
@@ -20,14 +20,14 @@ SKIP: {
     skip "Redis not available: $@", 1 unless $publisher;
 
     subtest 'basic subscribe and receive' => sub {
-        my $subscriber = Future::IO::Redis->new(
+        my $subscriber = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $subscriber->connect };
 
         # Subscribe first
         my $sub = run { $subscriber->subscribe('test:sub:basic') };
-        ok($sub->isa('Future::IO::Redis::Subscription'), 'returns Subscription object');
+        ok($sub->isa('Async::Redis::Subscription'), 'returns Subscription object');
         is([sort $sub->channels], ['test:sub:basic'], 'tracks subscribed channels');
 
         # Publish messages in background
@@ -57,7 +57,7 @@ SKIP: {
     };
 
     subtest 'in_pubsub blocks regular commands' => sub {
-        my $subscriber = Future::IO::Redis->new(
+        my $subscriber = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $subscriber->connect };

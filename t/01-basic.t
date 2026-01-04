@@ -3,11 +3,11 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
 
 use lib 'lib';
-use Future::IO::Redis;
+use Async::Redis;
 
 # Test helper provides: run {}, skip_without_redis
 # :redis tag auto-skips if Redis unavailable

@@ -3,22 +3,22 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
 use Time::HiRes qw(time);
 
 # Load Future::IO implementation
 
 use lib 'lib';
-use Future::IO::Redis;
+use Async::Redis;
 
 # ============================================================================
 # Test 1: Two connections in parallel
 # ============================================================================
 
 subtest 'parallel connections' => sub {
-    my $redis1 = Future::IO::Redis->new(host => redis_host(), port => redis_port());
-    my $redis2 = Future::IO::Redis->new(host => redis_host(), port => redis_port());
+    my $redis1 = Async::Redis->new(host => redis_host(), port => redis_port());
+    my $redis2 = Async::Redis->new(host => redis_host(), port => redis_port());
 
     run { $redis1->connect };
     run { $redis2->connect };
@@ -53,7 +53,7 @@ subtest 'parallel connections' => sub {
 # ============================================================================
 
 subtest 'pipelining performance' => sub {
-    my $redis = Future::IO::Redis->new(host => redis_host(), port => redis_port());
+    my $redis = Async::Redis->new(host => redis_host(), port => redis_port());
     run { $redis->connect };
 
     my $n = 10;  # Reduced for testing
@@ -98,7 +98,7 @@ subtest 'pipelining performance' => sub {
 # ============================================================================
 
 subtest 'event loop not blocked' => sub {
-    my $redis = Future::IO::Redis->new(host => redis_host(), port => redis_port());
+    my $redis = Async::Redis->new(host => redis_host(), port => redis_port());
     run { $redis->connect };
 
     my $timer_ticks = 0;
@@ -135,7 +135,7 @@ subtest 'connection pool' => sub {
     # Create a pool of connections
     my @pool;
     for my $i (1..3) {
-        my $r = Future::IO::Redis->new(host => redis_host(), port => redis_port());
+        my $r = Async::Redis->new(host => redis_host(), port => redis_port());
         run { $r->connect };
         push @pool, $r;
     }

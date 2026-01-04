@@ -1,4 +1,4 @@
-# Future::IO::Redis Phase 7: Observability & Fork Safety
+# Async::Redis Phase 7: Observability & Fork Safety
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -40,102 +40,102 @@ Run: `mkdir -p t/94-observability`
 ```perl
 # t/94-observability/redaction.t
 use Test2::V0;
-use Future::IO::Redis::Telemetry;
+use Async::Redis::Telemetry;
 
 subtest 'AUTH password redacted' => sub {
-    my $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+    my $formatted = Async::Redis::Telemetry::format_command_for_log(
         'AUTH', 'supersecret'
     );
     is($formatted, 'AUTH [REDACTED]', 'single password redacted');
 };
 
 subtest 'AUTH user password redacted' => sub {
-    my $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+    my $formatted = Async::Redis::Telemetry::format_command_for_log(
         'AUTH', 'myuser', 'mysecretpass'
     );
     is($formatted, 'AUTH myuser [REDACTED]', 'ACL password redacted, username visible');
 };
 
 subtest 'CONFIG SET requirepass redacted' => sub {
-    my $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+    my $formatted = Async::Redis::Telemetry::format_command_for_log(
         'CONFIG', 'SET', 'requirepass', 'newpassword'
     );
     is($formatted, 'CONFIG SET requirepass [REDACTED]', 'password config redacted');
 };
 
 subtest 'CONFIG SET masterauth redacted' => sub {
-    my $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+    my $formatted = Async::Redis::Telemetry::format_command_for_log(
         'CONFIG', 'SET', 'masterauth', 'replicapass'
     );
     is($formatted, 'CONFIG SET masterauth [REDACTED]', 'masterauth redacted');
 };
 
 subtest 'CONFIG SET non-password not redacted' => sub {
-    my $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+    my $formatted = Async::Redis::Telemetry::format_command_for_log(
         'CONFIG', 'SET', 'maxmemory', '100mb'
     );
     is($formatted, 'CONFIG SET maxmemory 100mb', 'non-password config visible');
 };
 
 subtest 'CONFIG GET not redacted' => sub {
-    my $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+    my $formatted = Async::Redis::Telemetry::format_command_for_log(
         'CONFIG', 'GET', 'maxmemory'
     );
     is($formatted, 'CONFIG GET maxmemory', 'CONFIG GET visible');
 };
 
 subtest 'MIGRATE AUTH redacted' => sub {
-    my $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+    my $formatted = Async::Redis::Telemetry::format_command_for_log(
         'MIGRATE', 'host', '6379', 'key', '0', '5000', 'AUTH', 'password'
     );
     like($formatted, qr/AUTH \[REDACTED\]/, 'MIGRATE AUTH password redacted');
 };
 
 subtest 'MIGRATE AUTH2 redacted' => sub {
-    my $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+    my $formatted = Async::Redis::Telemetry::format_command_for_log(
         'MIGRATE', 'host', '6379', 'key', '0', '5000', 'AUTH2', 'user', 'pass'
     );
     like($formatted, qr/AUTH2 user \[REDACTED\]/, 'MIGRATE AUTH2 password redacted');
 };
 
 subtest 'regular commands not redacted' => sub {
-    my $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+    my $formatted = Async::Redis::Telemetry::format_command_for_log(
         'GET', 'mykey'
     );
     is($formatted, 'GET mykey', 'GET visible');
 
-    $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+    $formatted = Async::Redis::Telemetry::format_command_for_log(
         'SET', 'mykey', 'myvalue'
     );
     is($formatted, 'SET mykey myvalue', 'SET visible');
 
-    $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+    $formatted = Async::Redis::Telemetry::format_command_for_log(
         'HSET', 'hash', 'field', 'value'
     );
     is($formatted, 'HSET hash field value', 'HSET visible');
 };
 
 subtest 'HELLO AUTH redacted' => sub {
-    my $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+    my $formatted = Async::Redis::Telemetry::format_command_for_log(
         'HELLO', '3', 'AUTH', 'user', 'pass'
     );
     like($formatted, qr/AUTH user \[REDACTED\]/, 'HELLO AUTH redacted');
 };
 
 subtest 'case insensitive' => sub {
-    my $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+    my $formatted = Async::Redis::Telemetry::format_command_for_log(
         'auth', 'password'
     );
     is($formatted, 'AUTH [REDACTED]', 'lowercase auth redacted');
 
-    $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+    $formatted = Async::Redis::Telemetry::format_command_for_log(
         'Auth', 'Password'
     );
     is($formatted, 'AUTH [REDACTED]', 'mixed case auth redacted');
 };
 
 subtest 'empty command' => sub {
-    my $formatted = Future::IO::Redis::Telemetry::format_command_for_log();
+    my $formatted = Async::Redis::Telemetry::format_command_for_log();
     is($formatted, '', 'empty command returns empty string');
 };
 
@@ -151,7 +151,7 @@ Expected: FAIL (Telemetry.pm not implemented)
 
 ```perl
 # lib/Future/IO/Redis/Telemetry.pm
-package Future::IO::Redis::Telemetry;
+package Async::Redis::Telemetry;
 
 use strict;
 use warnings;
@@ -558,7 +558,7 @@ sub _summarize_result {
     elsif (ref $result eq 'HASH') {
         return 'hash{' . scalar(keys %$result) . '}';
     }
-    elsif (ref $result && $result->isa('Future::IO::Redis::Error')) {
+    elsif (ref $result && $result->isa('Async::Redis::Error')) {
         return 'error: ' . $result->message;
     }
     elsif (length($result) > 100) {
@@ -580,14 +580,14 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Telemetry - Observability for Redis client
+Async::Redis::Telemetry - Observability for Redis client
 
 =head1 SYNOPSIS
 
-    use Future::IO::Redis;
+    use Async::Redis;
     use OpenTelemetry;
 
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host => 'localhost',
 
         # OpenTelemetry integration
@@ -676,13 +676,13 @@ Expected: PASS
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $test_redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -693,7 +693,7 @@ SKIP: {
         my @warnings;
         local $SIG{__WARN__} = sub { push @warnings, shift };
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host  => 'localhost',
             debug => 1,
         );
@@ -709,7 +709,7 @@ SKIP: {
     subtest 'debug => sub logs to custom logger' => sub {
         my @logs;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host  => 'localhost',
             debug => sub {
                 my ($direction, $data) = @_;
@@ -736,7 +736,7 @@ SKIP: {
     subtest 'debug logs redact AUTH' => sub {
         my @logs;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host     => 'localhost',
             password => 'testpass',  # Will send AUTH
             debug    => sub {
@@ -762,7 +762,7 @@ SKIP: {
         my @warnings;
         local $SIG{__WARN__} = sub { push @warnings, shift };
 
-        my $redis = Future::IO::Redis->new(host => 'localhost');
+        my $redis = Async::Redis->new(host => 'localhost');
         $loop->await($redis->connect);
         $loop->await($redis->ping);
         $redis->disconnect;
@@ -774,7 +774,7 @@ SKIP: {
     subtest 'response values not logged' => sub {
         my @logs;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host  => 'localhost',
             debug => sub { push @logs, $_[1] },
         );
@@ -799,14 +799,14 @@ done_testing;
 ### Step 7: Run debug logging test
 
 Run: `prove -l t/94-observability/debug.t`
-Expected: PASS (after integrating Telemetry into Future::IO::Redis)
+Expected: PASS (after integrating Telemetry into Async::Redis)
 
-### Step 8: Integrate Telemetry into Future::IO::Redis
+### Step 8: Integrate Telemetry into Async::Redis
 
 Edit `lib/Future/IO/Redis.pm`:
 
 ```perl
-use Future::IO::Redis::Telemetry;
+use Async::Redis::Telemetry;
 
 # In new():
 sub new {
@@ -825,7 +825,7 @@ sub new {
 
     # Initialize telemetry if any observability enabled
     if ($self->{debug} || $self->{otel_tracer} || $self->{otel_meter}) {
-        $self->{_telemetry} = Future::IO::Redis::Telemetry->new(
+        $self->{_telemetry} = Async::Redis::Telemetry->new(
             tracer       => $self->{otel_tracer},
             meter        => $self->{otel_meter},
             debug        => $self->{debug},
@@ -984,13 +984,13 @@ package MockTracer {
 
 package main;
 
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $test_redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -1000,7 +1000,7 @@ SKIP: {
     subtest 'tracer creates spans for commands' => sub {
         my $tracer = MockTracer->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host        => 'localhost',
             otel_tracer => $tracer,
         );
@@ -1028,7 +1028,7 @@ SKIP: {
     subtest 'span records error on command failure' => sub {
         my $tracer = MockTracer->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host        => 'localhost',
             otel_tracer => $tracer,
         );
@@ -1053,7 +1053,7 @@ SKIP: {
     subtest 'AUTH password redacted in span' => sub {
         my $tracer = MockTracer->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host        => 'localhost',
             password    => 'secret123',
             otel_tracer => $tracer,
@@ -1076,7 +1076,7 @@ SKIP: {
     subtest 'otel_include_args => 0 hides args' => sub {
         my $tracer = MockTracer->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host             => 'localhost',
             otel_tracer      => $tracer,
             otel_include_args => 0,
@@ -1177,13 +1177,13 @@ package MockMeter {
 
 package main;
 
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $test_redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -1193,7 +1193,7 @@ SKIP: {
     subtest 'meter records command counts' => sub {
         my $meter = MockMeter->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host       => 'localhost',
             otel_meter => $meter,
         );
@@ -1227,7 +1227,7 @@ SKIP: {
     subtest 'meter records command latency' => sub {
         my $meter = MockMeter->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host       => 'localhost',
             otel_meter => $meter,
         );
@@ -1249,7 +1249,7 @@ SKIP: {
     subtest 'meter records connection count' => sub {
         my $meter = MockMeter->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host       => 'localhost',
             otel_meter => $meter,
         );
@@ -1267,7 +1267,7 @@ SKIP: {
     subtest 'meter records errors' => sub {
         my $meter = MockMeter->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host       => 'localhost',
             otel_meter => $meter,
         );
@@ -1289,7 +1289,7 @@ SKIP: {
     subtest 'meter records pipeline size' => sub {
         my $meter = MockMeter->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host       => 'localhost',
             otel_meter => $meter,
         );
@@ -1388,14 +1388,14 @@ EOF
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 use POSIX qw(_exit);
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -1463,9 +1463,9 @@ SKIP: {
         plan skip_all => 'fork() not supported on this platform'
             unless $^O ne 'MSWin32';
 
-        require Future::IO::Redis::Pool;
+        require Async::Redis::Pool;
 
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => 'localhost',
             min  => 1,
             max  => 3,
@@ -1557,7 +1557,7 @@ done_testing;
 Run: `prove -l t/10-connection/fork-safety.t`
 Expected: FAIL (PID tracking not implemented)
 
-### Step 3: Add PID tracking to Future::IO::Redis
+### Step 3: Add PID tracking to Async::Redis
 
 Edit `lib/Future/IO/Redis.pm`:
 
@@ -1617,7 +1617,7 @@ async sub command {
             await $self->connect;
         }
         else {
-            die Future::IO::Redis::Error::Disconnected->new(
+            die Async::Redis::Error::Disconnected->new(
                 message => "Connection invalid after fork",
             );
         }
@@ -1629,7 +1629,7 @@ async sub command {
             await $self->connect;
         }
         else {
-            die Future::IO::Redis::Error::Disconnected->new(
+            die Async::Redis::Error::Disconnected->new(
                 message => "Not connected",
             );
         }

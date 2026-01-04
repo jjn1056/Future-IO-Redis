@@ -2,7 +2,7 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
 
 # Mock OpenTelemetry meter
@@ -78,11 +78,11 @@ package MockMeter {
 
 package main;
 
-use Future::IO::Redis;
+use Async::Redis;
 
 SKIP: {
     my $test_redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
         );
@@ -94,7 +94,7 @@ SKIP: {
     subtest 'meter records command counts' => sub {
         my $meter = MockMeter->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host       => $ENV{REDIS_HOST} // 'localhost',
             otel_meter => $meter,
         );
@@ -128,7 +128,7 @@ SKIP: {
     subtest 'meter records command latency' => sub {
         my $meter = MockMeter->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host       => $ENV{REDIS_HOST} // 'localhost',
             otel_meter => $meter,
         );
@@ -150,7 +150,7 @@ SKIP: {
     subtest 'meter records connection count' => sub {
         my $meter = MockMeter->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host       => $ENV{REDIS_HOST} // 'localhost',
             otel_meter => $meter,
         );
@@ -168,7 +168,7 @@ SKIP: {
     subtest 'meter records errors' => sub {
         my $meter = MockMeter->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host       => $ENV{REDIS_HOST} // 'localhost',
             otel_meter => $meter,
         );
@@ -190,7 +190,7 @@ SKIP: {
     subtest 'meter records pipeline size' => sub {
         my $meter = MockMeter->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host       => $ENV{REDIS_HOST} // 'localhost',
             otel_meter => $meter,
         );
@@ -217,7 +217,7 @@ SKIP: {
     subtest 'latency has command label' => sub {
         my $meter = MockMeter->new;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host       => $ENV{REDIS_HOST} // 'localhost',
             otel_meter => $meter,
         );

@@ -1,4 +1,4 @@
-package Future::IO::Redis::Error::Redis;
+package Async::Redis::Error::Redis;
 
 use strict;
 use warnings;
@@ -6,7 +6,7 @@ use 5.018;
 
 our $VERSION = '0.001';
 
-use parent 'Future::IO::Redis::Error';
+use parent 'Async::Redis::Error';
 
 sub type { shift->{type} }
 
@@ -64,7 +64,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Error::Redis - Redis server error exception
+Async::Redis::Error::Redis - Redis server error exception
 
 =head1 DESCRIPTION
 
@@ -77,7 +77,7 @@ Thrown when Redis returns an error response (RESP type '-').
 Class method to create error from Redis error message, parsing
 the error type from the message prefix.
 
-    my $error = Future::IO::Redis::Error::Redis->from_message(
+    my $error = Async::Redis::Error::Redis->from_message(
         'WRONGTYPE Operation against key holding wrong type'
     );
     say $error->type;  # 'WRONGTYPE'

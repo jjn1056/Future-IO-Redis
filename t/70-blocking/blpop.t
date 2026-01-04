@@ -2,14 +2,14 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time);
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost', connect_timeout => 2);
         run { $r->connect };
         $r;
     };
@@ -38,7 +38,7 @@ SKIP: {
         run { $redis->del('blpop:queue') };
 
         # Schedule push after 0.3s using a separate connection
-        my $pusher = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
+        my $pusher = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
         run { $pusher->connect };
 
         my $push_f = get_loop()->delay_future(after => 0.3)->then(sub {

@@ -2,13 +2,13 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
-use Future::IO::Redis;
+use Async::Redis;
 
 SKIP: {
     my $test_redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
         );
@@ -21,7 +21,7 @@ SKIP: {
         my @warnings;
         local $SIG{__WARN__} = sub { push @warnings, shift };
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host  => $ENV{REDIS_HOST} // 'localhost',
             debug => 1,
         );
@@ -37,7 +37,7 @@ SKIP: {
     subtest 'debug => sub logs to custom logger' => sub {
         my @logs;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host  => $ENV{REDIS_HOST} // 'localhost',
             debug => sub {
                 my ($direction, $data) = @_;
@@ -67,7 +67,7 @@ SKIP: {
     subtest 'debug logs redact AUTH' => sub {
         my @logs;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host     => $ENV{REDIS_HOST} // 'localhost',
             password => 'testpass',  # Will send AUTH
             debug    => sub {
@@ -79,7 +79,7 @@ SKIP: {
         # Connect will try AUTH - AUTH command happens during handshake
         # The telemetry only logs via command() not during handshake
         # So we test the redaction function directly instead
-        my $formatted = Future::IO::Redis::Telemetry::format_command_for_log(
+        my $formatted = Async::Redis::Telemetry::format_command_for_log(
             'AUTH', 'testpass'
         );
         unlike($formatted, qr/testpass/, 'password not in formatted command');
@@ -90,7 +90,7 @@ SKIP: {
         my @warnings;
         local $SIG{__WARN__} = sub { push @warnings, shift };
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $redis->connect };
@@ -104,7 +104,7 @@ SKIP: {
     subtest 'recv log summarizes values' => sub {
         my @logs;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host  => $ENV{REDIS_HOST} // 'localhost',
             debug => sub { push @logs, $_[1] },
         );

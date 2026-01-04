@@ -1,4 +1,4 @@
-# Docker Compose for Future::IO::Redis examples
+# Docker Compose for Async::Redis examples
 #
 # Start:  docker compose -f examples/docker-compose.yml up -d
 # Stop:   docker compose -f examples/docker-compose.yml down

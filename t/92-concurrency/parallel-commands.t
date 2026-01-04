@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use Test2::V0;
 use Test::Lib;
-use Test::Future::IO::Redis qw(init_loop skip_without_redis await_f cleanup_keys run);
+use Test::Async::Redis qw(init_loop skip_without_redis await_f cleanup_keys run);
 
 my $loop = init_loop();
 
@@ -12,7 +12,7 @@ SKIP: {
     my $redis = skip_without_redis();
 
     subtest 'pipelined SET commands' => sub {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $r->connect };
@@ -41,7 +41,7 @@ SKIP: {
     };
 
     subtest 'pipelined GET commands' => sub {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $r->connect };
@@ -71,7 +71,7 @@ SKIP: {
     };
 
     subtest 'mixed pipeline operations' => sub {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $r->connect };
@@ -96,7 +96,7 @@ SKIP: {
     };
 
     subtest 'sequential commands work correctly' => sub {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $r->connect };

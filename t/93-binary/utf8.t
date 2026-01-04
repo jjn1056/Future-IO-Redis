@@ -4,7 +4,7 @@ use warnings;
 use utf8;
 use Test2::V0;
 use Test::Lib;
-use Test::Future::IO::Redis qw(init_loop skip_without_redis await_f cleanup_keys run);
+use Test::Async::Redis qw(init_loop skip_without_redis await_f cleanup_keys run);
 
 my $loop = init_loop();
 
@@ -12,7 +12,7 @@ SKIP: {
     my $redis = skip_without_redis();
 
     subtest 'UTF-8 values' => sub {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $r->connect };
@@ -34,7 +34,7 @@ SKIP: {
     };
 
     subtest 'UTF-8 in hash fields' => sub {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $r->connect };
@@ -56,7 +56,7 @@ SKIP: {
     };
 
     subtest 'UTF-8 in list elements' => sub {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $r->connect };
@@ -74,7 +74,7 @@ SKIP: {
     };
 
     subtest 'emoji values' => sub {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $r->connect };

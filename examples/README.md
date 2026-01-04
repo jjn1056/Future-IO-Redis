@@ -1,6 +1,6 @@
-# Future::IO::Redis Examples
+# Async::Redis Examples
 
-This directory contains example applications demonstrating Future::IO::Redis.
+This directory contains example applications demonstrating Async::Redis.
 
 ## Prerequisites
 

@@ -2,14 +2,14 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Future::AsyncAwait;
 use Test2::V0;
-use Future::IO::Redis;
+use Async::Redis;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost', connect_timeout => 2);
         run { $r->connect };
         $r;
     };

@@ -27,9 +27,9 @@ use Future::IO;
 Future::IO->load_impl('IOAsync');
 
 use File::Basename qw(dirname);
-use lib dirname(__FILE__) . '/../../lib';  # For Future::IO::Redis
+use lib dirname(__FILE__) . '/../../lib';  # For Async::Redis
 
-use Future::IO::Redis;
+use Async::Redis;
 
 # Shared Redis connection (per-worker)
 my $redis;
@@ -38,7 +38,7 @@ my $redis;
 async sub get_redis {
     return $redis if $redis && $redis->is_connected;
 
-    $redis = Future::IO::Redis->new(
+    $redis = Async::Redis->new(
         host => $ENV{REDIS_HOST} // 'localhost',
         port => $ENV{REDIS_PORT} // 6379,
     );

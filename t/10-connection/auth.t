@@ -2,14 +2,14 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
-use Future::IO::Redis;
+use Async::Redis;
 
 # Helper: await a Future and return its result (throws on failure)
 
 subtest 'constructor accepts auth parameters' => sub {
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host        => 'localhost',
         password    => 'secret',
         username    => 'myuser',
@@ -24,7 +24,7 @@ subtest 'constructor accepts auth parameters' => sub {
 };
 
 subtest 'URI parsed for auth' => sub {
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         uri => 'redis://user:pass@localhost:6380/3',
     );
 
@@ -36,7 +36,7 @@ subtest 'URI parsed for auth' => sub {
 };
 
 subtest 'URI TLS detected' => sub {
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         uri => 'rediss://localhost',
     );
 
@@ -46,7 +46,7 @@ subtest 'URI TLS detected' => sub {
 # Tests requiring Redis with specific configuration
 SKIP: {
     my $test_redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host            => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
         );
@@ -57,7 +57,7 @@ SKIP: {
     $test_redis->disconnect;
 
     subtest 'SELECT database works' => sub {
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host     => $ENV{REDIS_HOST} // 'localhost',
             database => 1,
         );
@@ -75,7 +75,7 @@ SKIP: {
         $redis->disconnect;
 
         # Connect to database 0, key should not exist
-        my $redis2 = Future::IO::Redis->new(
+        my $redis2 = Async::Redis->new(
             host     => $ENV{REDIS_HOST} // 'localhost',
             database => 0,
         );
@@ -88,7 +88,7 @@ SKIP: {
     };
 
     subtest 'CLIENT SETNAME works' => sub {
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host        => $ENV{REDIS_HOST} // 'localhost',
             client_name => 'test-client-12345',
         );
@@ -105,7 +105,7 @@ SKIP: {
     subtest 'auth replayed on reconnect' => sub {
         my $connect_count = 0;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host        => $ENV{REDIS_HOST} // 'localhost',
             database    => 2,
             client_name => 'reconnect-test',
@@ -143,7 +143,7 @@ SKIP: {
         unless $ENV{REDIS_AUTH_HOST} && $ENV{REDIS_AUTH_PASS};
 
     subtest 'password authentication works' => sub {
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host     => $ENV{REDIS_AUTH_HOST},
             password => $ENV{REDIS_AUTH_PASS},
         );
@@ -156,7 +156,7 @@ SKIP: {
     };
 
     subtest 'wrong password fails' => sub {
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host     => $ENV{REDIS_AUTH_HOST},
             password => 'wrongpassword',
         );
@@ -178,7 +178,7 @@ SKIP: {
         unless $ENV{REDIS_ACL_HOST} && $ENV{REDIS_ACL_USER} && $ENV{REDIS_ACL_PASS};
 
     subtest 'ACL authentication works' => sub {
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host     => $ENV{REDIS_ACL_HOST},
             username => $ENV{REDIS_ACL_USER},
             password => $ENV{REDIS_ACL_PASS},

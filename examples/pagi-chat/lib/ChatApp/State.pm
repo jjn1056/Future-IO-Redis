@@ -66,17 +66,17 @@ my $server_start_time = time();
 async sub init_redis {
     my (%args) = @_;
 
-    require Future::IO::Redis;
+    require Async::Redis;
 
     my $host = $args{host} // $ENV{REDIS_HOST} // 'localhost';
     my $port = $args{port} // $ENV{REDIS_PORT} // 6379;
 
     # Main connection for commands
-    $redis = Future::IO::Redis->new(host => $host, port => $port);
+    $redis = Async::Redis->new(host => $host, port => $port);
     await $redis->connect;
 
     # Separate connection for PubSub
-    my $pubsub_redis = Future::IO::Redis->new(host => $host, port => $port);
+    my $pubsub_redis = Async::Redis->new(host => $host, port => $port);
     await $pubsub_redis->connect;
     $pubsub = await $pubsub_redis->subscribe(BROADCAST_CHANNEL);
 

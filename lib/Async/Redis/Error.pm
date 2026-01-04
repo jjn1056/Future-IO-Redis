@@ -1,4 +1,4 @@
-package Future::IO::Redis::Error;
+package Async::Redis::Error;
 
 use strict;
 use warnings;
@@ -35,28 +35,28 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Error - Base exception class for Redis errors
+Async::Redis::Error - Base exception class for Redis errors
 
 =head1 SYNOPSIS
 
-    use Future::IO::Redis::Error;
+    use Async::Redis::Error;
 
     # Create and throw
-    Future::IO::Redis::Error->throw(message => 'something went wrong');
+    Async::Redis::Error->throw(message => 'something went wrong');
 
     # Or create and die later
-    my $error = Future::IO::Redis::Error->new(message => 'oops');
+    my $error = Async::Redis::Error->new(message => 'oops');
     die $error;
 
     # Catch
     eval { ... };
-    if ($@ && $@->isa('Future::IO::Redis::Error')) {
+    if ($@ && $@->isa('Async::Redis::Error')) {
         warn "Redis error: " . $@->message;
     }
 
 =head1 DESCRIPTION
 
-Base class for all Future::IO::Redis exceptions. Subclasses provide
+Base class for all Async::Redis exceptions. Subclasses provide
 specific error types with additional context.
 
 =cut

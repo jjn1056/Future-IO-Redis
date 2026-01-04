@@ -2,13 +2,13 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
-use Future::IO::Redis;
+use Async::Redis;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host   => $ENV{REDIS_HOST} // 'localhost',
             prefix => 'test:prefix:',
             connect_timeout => 2,
@@ -22,7 +22,7 @@ SKIP: {
         run { $redis->set('key1', 'value1') };
 
         # Value should be stored under prefixed key
-        my $raw_redis = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
+        my $raw_redis = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
         run { $raw_redis->connect };
 
         my $value = run { $raw_redis->get('test:prefix:key1') };
@@ -37,7 +37,7 @@ SKIP: {
     };
 
     subtest 'prefix applied to MGET' => sub {
-        my $raw_redis = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
+        my $raw_redis = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
         run { $raw_redis->connect };
 
         # Set up keys with prefix
@@ -56,7 +56,7 @@ SKIP: {
     subtest 'prefix NOT applied to values' => sub {
         run { $redis->set('key2', 'my:value:with:colons') };
 
-        my $raw_redis = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
+        my $raw_redis = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
         run { $raw_redis->connect };
 
         my $value = run { $raw_redis->get('test:prefix:key2') };
@@ -69,7 +69,7 @@ SKIP: {
     subtest 'prefix in MSET - keys only, not values' => sub {
         run { $redis->mset('x', 'val:x', 'y', 'val:y') };
 
-        my $raw_redis = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
+        my $raw_redis = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
         run { $raw_redis->connect };
 
         my $x = run { $raw_redis->get('test:prefix:x') };
@@ -84,7 +84,7 @@ SKIP: {
     subtest 'prefix in hash commands' => sub {
         run { $redis->hset('myhash', 'field1', 'value1') };
 
-        my $raw_redis = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
+        my $raw_redis = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
         run { $raw_redis->connect };
 
         # Check it's stored with prefix
@@ -100,7 +100,7 @@ SKIP: {
     };
 
     subtest 'DEL with multiple keys' => sub {
-        my $raw_redis = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
+        my $raw_redis = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
         run { $raw_redis->connect };
 
         run { $raw_redis->set('test:prefix:d1', '1') };
@@ -117,7 +117,7 @@ SKIP: {
     };
 
     subtest 'no prefix when disabled' => sub {
-        my $no_prefix = Future::IO::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
+        my $no_prefix = Async::Redis->new(host => $ENV{REDIS_HOST} // 'localhost');
         run { $no_prefix->connect };
 
         run { $no_prefix->set('raw:key', 'value') };

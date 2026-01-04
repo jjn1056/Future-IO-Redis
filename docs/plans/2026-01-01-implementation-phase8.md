@@ -70,7 +70,7 @@ redis-cli ping
 Create `t/lib/Test/Future/IO/Redis.pm`:
 
 ```perl
-package Test::Future::IO::Redis;
+package Test::Async::Redis;
 
 use strict;
 use warnings;
@@ -80,7 +80,7 @@ use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use IO::Async::Process;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 our @EXPORT_OK = qw(
     init_loop
@@ -125,7 +125,7 @@ sub get_loop {
 # Test bodies must use await, not ->get.
 sub skip_without_redis {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => redis_host(),
             port => redis_port(),
             connect_timeout => 2,
@@ -139,7 +139,7 @@ sub skip_without_redis {
 
 # Async-friendly skip check (preferred when loop is already running)
 sub skip_without_redis_async {
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host => redis_host(),
         port => redis_port(),
         connect_timeout => 2,
@@ -281,11 +281,11 @@ __END__
 
 =head1 NAME
 
-Test::Future::IO::Redis - Test utilities for Future::IO::Redis
+Test::Async::Redis - Test utilities for Async::Redis
 
 =head1 SYNOPSIS
 
-    use Test::Future::IO::Redis qw(
+    use Test::Async::Redis qw(
         init_loop skip_without_redis delay run_command_async
     );
 
@@ -304,7 +304,7 @@ Test::Future::IO::Redis - Test utilities for Future::IO::Redis
 
 =head1 DESCRIPTION
 
-Test utilities for Future::IO::Redis that maintain async discipline.
+Test utilities for Async::Redis that maintain async discipline.
 
 =head2 Bootstrap vs Test Body
 
@@ -324,7 +324,7 @@ Expected: "t/lib/Test/Future/IO/Redis.pm syntax OK"
 ```bash
 git add t/lib/Test/Future/IO/Redis.pm
 git commit -m "$(cat <<'EOF'
-test: add Test::Future::IO::Redis helper module
+test: add Test::Async::Redis helper module
 
 Provides utilities for async testing:
 - init_loop/get_loop: Event loop management
@@ -359,7 +359,7 @@ EOF
 Create `docker-compose.test.yml`:
 
 ```yaml
-# Docker Compose configuration for Future::IO::Redis testing
+# Docker Compose configuration for Async::Redis testing
 # Usage: docker-compose -f docker-compose.test.yml up -d
 
 version: '3.8'
@@ -581,7 +581,7 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis delay run_docker_async cleanup_keys_async
 );
 use Future::AsyncAwait;
@@ -604,9 +604,9 @@ subtest 'reconnects after Redis restart' => sub {
         my $disconnects = 0;
         my $reconnects = 0;
 
-        my $test_redis = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $test_redis = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
             reconnect => 1,
             reconnect_delay => 0.1,
             max_reconnect_delay => 2,
@@ -645,9 +645,9 @@ subtest 'commands fail appropriately during restart' => sub {
         my $errors = 0;
         my $success = 0;
 
-        my $test_redis = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $test_redis = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
             reconnect => 0,  # Disable auto-reconnect for this test
             request_timeout => 1,
         );
@@ -681,9 +681,9 @@ subtest 'commands fail appropriately during restart' => sub {
 
 subtest 'queued commands execute after reconnect' => sub {
     $loop->await(async sub {
-        my $test_redis = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $test_redis = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
             reconnect => 1,
             reconnect_delay => 0.1,
             queue_during_reconnect => 1,  # Queue commands while reconnecting
@@ -741,7 +741,7 @@ git add t/91-reliability/redis-restart.t
 git commit -m "$(cat <<'EOF'
 test: add Redis restart reliability test
 
-Tests Future::IO::Redis behavior when Redis restarts:
+Tests Async::Redis behavior when Redis restarts:
 - Automatic reconnection after restart
 - on_disconnect/on_connect callbacks fire correctly
 - Commands fail appropriately when Redis is down
@@ -775,11 +775,11 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis delay cleanup_keys_async measure_ticks
 );
 use Future::AsyncAwait;
-use Future::IO::Redis::Error;
+use Async::Redis::Error;
 
 my $loop = init_loop();
 my $redis = skip_without_redis();
@@ -788,9 +788,9 @@ $loop->await(cleanup_keys_async($redis, 'partition:*'));
 
 subtest 'handles socket close during command' => sub {
     $loop->await(async sub {
-        my $test_redis = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $test_redis = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
             reconnect => 0,  # Disable reconnect for this test
             request_timeout => 2,
         );
@@ -810,7 +810,7 @@ subtest 'handles socket close during command' => sub {
 
         ok($error, 'command failed when socket closed');
         ok(
-            ref($error) && $error->isa('Future::IO::Redis::Error::Connection'),
+            ref($error) && $error->isa('Async::Redis::Error::Connection'),
             'got Connection error'
         ) or diag("Got: " . (ref($error) || $error));
     }->());
@@ -821,9 +821,9 @@ subtest 'reconnects after partition heals' => sub {
         my $disconnects = 0;
         my $reconnects = 0;
 
-        my $test_redis = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $test_redis = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
             reconnect => 1,
             reconnect_delay => 0.1,
             on_disconnect => sub { $disconnects++ },
@@ -853,9 +853,9 @@ subtest 'reconnects after partition heals' => sub {
 
 subtest 'multiple commands fail on partition' => sub {
     $loop->await(async sub {
-        my $test_redis = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $test_redis = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
             reconnect => 0,
             request_timeout => 1,
         );
@@ -884,9 +884,9 @@ subtest 'multiple commands fail on partition' => sub {
 
 subtest 'event loop not blocked during partition handling' => sub {
     $loop->await(async sub {
-        my $test_redis = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $test_redis = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
             reconnect => 1,
             reconnect_delay => 0.2,
             max_reconnect_delay => 1,
@@ -972,11 +972,11 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis delay cleanup_keys_async measure_ticks
 );
 use Future::AsyncAwait;
-use Future::IO::Redis::Error;
+use Async::Redis::Error;
 use Time::HiRes qw(time);
 
 my $loop = init_loop();
@@ -986,9 +986,9 @@ $loop->await(cleanup_keys_async($redis, 'slow:*'));
 
 subtest 'request timeout fires during slow command' => sub {
     $loop->await(async sub {
-        my $test_redis = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $test_redis = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
             request_timeout => 0.5,  # 500ms timeout
         );
         await $test_redis->connect;
@@ -1006,7 +1006,7 @@ subtest 'request timeout fires during slow command' => sub {
         ok($elapsed < 1.5, "timeout fired quickly (elapsed: ${elapsed}s)");
         ok($elapsed >= 0.4, "waited at least 400ms (elapsed: ${elapsed}s)");
 
-        if (ref($error) && $error->isa('Future::IO::Redis::Error::Timeout')) {
+        if (ref($error) && $error->isa('Async::Redis::Error::Timeout')) {
             pass('got Timeout error');
         } else {
             diag("Got: " . (ref($error) || $error));
@@ -1019,9 +1019,9 @@ subtest 'request timeout fires during slow command' => sub {
 
 subtest 'per-command timeout override' => sub {
     $loop->await(async sub {
-        my $test_redis = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $test_redis = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
             request_timeout => 10,  # Default 10s
         );
         await $test_redis->connect;
@@ -1046,9 +1046,9 @@ subtest 'per-command timeout override' => sub {
 
 subtest 'event loop not blocked during slow command' => sub {
     $loop->await(async sub {
-        my $test_redis = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $test_redis = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
         );
         await $test_redis->connect;
 
@@ -1076,9 +1076,9 @@ subtest 'event loop not blocked during slow command' => sub {
 
 subtest 'inflight requests fail when connection reset after timeout' => sub {
     $loop->await(async sub {
-        my $test_redis = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $test_redis = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
             request_timeout => 0.5,
             reconnect => 0,  # Don't reconnect for this test
         );
@@ -1152,7 +1152,7 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis cleanup_keys_async
 );
 use Future::AsyncAwait;
@@ -1181,9 +1181,9 @@ subtest 'handles many concurrent commands' => sub {
 subtest 'queue limits enforced' => sub {
     $loop->await(async sub {
         # Create a client with queue limit
-        my $limited = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $limited = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
             max_queue_size => 10,  # Only allow 10 queued commands
         );
         await $limited->connect;
@@ -1272,11 +1272,11 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis delay cleanup_keys_async
 );
 use Future::AsyncAwait;
-use Future::IO::Redis::Error;
+use Async::Redis::Error;
 use Time::HiRes qw(time);
 
 my $loop = init_loop();
@@ -1288,9 +1288,9 @@ subtest 'retries on connection failure' => sub {
     $loop->await(async sub {
         my $attempts = 0;
 
-        my $test_redis = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $test_redis = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
             reconnect => 1,
             reconnect_delay => 0.1,
             max_reconnect_attempts => 3,
@@ -1316,7 +1316,7 @@ subtest 'exponential backoff timing' => sub {
     $loop->await(async sub {
         my @attempt_times;
 
-        my $test_redis = Future::IO::Redis->new(
+        my $test_redis = Async::Redis->new(
             host => '10.255.255.1',  # Non-routable, will fail
             port => 6379,
             connect_timeout => 0.1,
@@ -1351,7 +1351,7 @@ subtest 'max attempts respected' => sub {
     $loop->await(async sub {
         my $attempts = 0;
 
-        my $test_redis = Future::IO::Redis->new(
+        my $test_redis = Async::Redis->new(
             host => '10.255.255.1',  # Non-routable
             port => 6379,
             connect_timeout => 0.1,
@@ -1377,7 +1377,7 @@ subtest 'jitter applied to backoff' => sub {
         # Run multiple connection attempts to check for jitter
         for my $run (1..3) {
             my @times;
-            my $test_redis = Future::IO::Redis->new(
+            my $test_redis = Async::Redis->new(
                 host => '10.255.255.1',
                 port => 6379,
                 connect_timeout => 0.05,
@@ -1448,11 +1448,11 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis delay cleanup_keys_async
 );
 use Future::AsyncAwait;
-use Future::IO::Redis::Error;
+use Async::Redis::Error;
 
 # Requires redis-lowmem container
 my $lowmem_port = 6383;
@@ -1468,7 +1468,7 @@ my $loop = init_loop();
 # Skip if redis-lowmem not available
 my $redis;
 eval {
-    $redis = Future::IO::Redis->new(
+    $redis = Async::Redis->new(
         host => 'localhost',
         port => $lowmem_port,
         connect_timeout => 2,
@@ -1494,7 +1494,7 @@ subtest 'handles OOM error gracefully' => sub {
 
         ok($error, 'SET failed on OOM');
 
-        if (ref($error) && $error->isa('Future::IO::Redis::Error::Redis')) {
+        if (ref($error) && $error->isa('Async::Redis::Error::Redis')) {
             like($error->message, qr/OOM|memory/i, 'got OOM error message');
         } else {
             # May get different error types
@@ -1584,7 +1584,7 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis cleanup_keys_async
 );
 use Future::AsyncAwait;
@@ -1680,7 +1680,7 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis cleanup_keys_async measure_ticks delay
 );
 use Future::AsyncAwait;
@@ -1813,7 +1813,7 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis cleanup_keys_async
 );
 use Future::AsyncAwait;
@@ -1895,7 +1895,7 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis delay cleanup_keys_async
 );
 use Future::AsyncAwait;
@@ -1909,9 +1909,9 @@ subtest 'multiple subscribers concurrently' => sub {
         # Create multiple subscriber connections
         my @subscribers;
         for my $i (1..5) {
-            my $sub = Future::IO::Redis->new(
-                host => Test::Future::IO::Redis::redis_host(),
-                port => Test::Future::IO::Redis::redis_port(),
+            my $sub = Async::Redis->new(
+                host => Test::Async::Redis::redis_host(),
+                port => Test::Async::Redis::redis_port(),
             );
             await $sub->connect;
             push @subscribers, $sub;
@@ -1946,9 +1946,9 @@ subtest 'multiple subscribers concurrently' => sub {
 subtest 'pubsub with concurrent commands on separate connection' => sub {
     $loop->await(async sub {
         # Subscriber connection
-        my $subscriber = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $subscriber = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
         );
         await $subscriber->connect;
 
@@ -1989,7 +1989,7 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis delay cleanup_keys_async
 );
 use Future::AsyncAwait;
@@ -2006,9 +2006,9 @@ subtest 'commands, pipelines, and pubsub together' => sub {
         my $start = time();
 
         # Create subscriber connection
-        my $subscriber = Future::IO::Redis->new(
-            host => Test::Future::IO::Redis::redis_host(),
-            port => Test::Future::IO::Redis::redis_port(),
+        my $subscriber = Async::Redis->new(
+            host => Test::Async::Redis::redis_host(),
+            port => Test::Async::Redis::redis_port(),
         );
         await $subscriber->connect;
         my $sub = await $subscriber->subscribe("mixed:channel");
@@ -2134,7 +2134,7 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis cleanup_keys_async
 );
 use Future::AsyncAwait;
@@ -2216,7 +2216,7 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis cleanup_keys_async
 );
 use Future::AsyncAwait;
@@ -2370,7 +2370,7 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis cleanup_keys_async delay
 );
 use Future::AsyncAwait;
@@ -2499,7 +2499,7 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis cleanup_keys_async delay
 );
 use Future::AsyncAwait;
@@ -2648,7 +2648,7 @@ use strict;
 use warnings;
 use Test2::V0;
 use lib 't/lib';
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis cleanup_keys_async
 );
 use Future::AsyncAwait;
@@ -2797,14 +2797,14 @@ Create `benchmark/throughput.pl`:
 
 ```perl
 #!/usr/bin/env perl
-# Benchmark: Future::IO::Redis throughput
+# Benchmark: Async::Redis throughput
 
 use strict;
 use warnings;
 use lib 'lib';
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 use Future::AsyncAwait;
 use Future;
 use Time::HiRes qw(time);
@@ -2825,13 +2825,13 @@ GetOptions(
 my $loop = IO::Async::Loop->new;
 Future::IO::Impl::IOAsync->set_loop($loop);
 
-print "Future::IO::Redis Throughput Benchmark\n";
+print "Async::Redis Throughput Benchmark\n";
 print "=" x 50, "\n";
 print "Host: $host:$port\n";
 print "Operations: $count\n\n";
 
 $loop->await(async sub {
-    my $redis = Future::IO::Redis->new(host => $host, port => $port);
+    my $redis = Async::Redis->new(host => $host, port => $port);
     await $redis->connect;
 
     # Warmup
@@ -2930,7 +2930,7 @@ Create `benchmark/compare.pl`:
 
 ```perl
 #!/usr/bin/env perl
-# Benchmark: Compare Future::IO::Redis with other Perl Redis clients
+# Benchmark: Compare Async::Redis with other Perl Redis clients
 
 use strict;
 use warnings;
@@ -2950,7 +2950,7 @@ GetOptions(
     'lib=s@' => \@libs,
 ) or die "Usage: $0 [--host HOST] [--port PORT] [--iterations N] [--lib NAME]\n";
 
-@libs = qw(Future::IO::Redis Redis) unless @libs;
+@libs = qw(Async::Redis Redis) unless @libs;
 
 print "Redis Client Comparison Benchmark\n";
 print "=" x 50, "\n";
@@ -2960,19 +2960,19 @@ print "Libraries: ", join(', ', @libs), "\n\n";
 
 my %benchmarks;
 
-# Future::IO::Redis (async)
-if (grep { $_ eq 'Future::IO::Redis' } @libs) {
+# Async::Redis (async)
+if (grep { $_ eq 'Async::Redis' } @libs) {
     require IO::Async::Loop;
     require Future::IO::Impl::IOAsync;
-    require Future::IO::Redis;
+    require Async::Redis;
 
     my $loop = IO::Async::Loop->new;
     Future::IO::Impl::IOAsync->set_loop($loop);
 
-    my $redis = Future::IO::Redis->new(host => $host, port => $port);
+    my $redis = Async::Redis->new(host => $host, port => $port);
     $loop->await($redis->connect);
 
-    $benchmarks{'Future::IO::Redis'} = sub {
+    $benchmarks{'Async::Redis'} = sub {
         $loop->await($redis->set('bench:compare', 'value'));
         $loop->await($redis->get('bench:compare'));
     };
@@ -3110,15 +3110,15 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis - Async Redis client using Future::IO
+Async::Redis - Async Redis client using Future::IO
 
 =head1 SYNOPSIS
 
-    use Future::IO::Redis;
+    use Async::Redis;
     use Future::AsyncAwait;
 
     # Basic connection
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host => 'localhost',
         port => 6379,
     );
@@ -3142,7 +3142,7 @@ Future::IO::Redis - Async Redis client using Future::IO
     }
 
     # Connection pooling
-    my $pool = Future::IO::Redis::Pool->new(
+    my $pool = Async::Redis::Pool->new(
         host => 'localhost',
         min_connections => 2,
         max_connections => 10,
@@ -3155,7 +3155,7 @@ Future::IO::Redis - Async Redis client using Future::IO
 
 =head1 DESCRIPTION
 
-Future::IO::Redis is an asynchronous Redis client built on L<Future::IO>,
+Async::Redis is an asynchronous Redis client built on L<Future::IO>,
 providing a modern, non-blocking interface for Redis operations.
 
 Key features:
@@ -3188,7 +3188,7 @@ Key features:
 
 =head2 new
 
-    my $redis = Future::IO::Redis->new(%options);
+    my $redis = Async::Redis->new(%options);
 
 Creates a new Redis client instance. Does not connect immediately.
 
@@ -3392,16 +3392,16 @@ Execute Lua script.
 
 Errors are thrown as exception objects:
 
-    use Future::IO::Redis::Error;
+    use Async::Redis::Error;
 
     try {
         await $redis->get('key');
     } catch ($e) {
-        if ($e->isa('Future::IO::Redis::Error::Connection')) {
+        if ($e->isa('Async::Redis::Error::Connection')) {
             # Connection error
-        } elsif ($e->isa('Future::IO::Redis::Error::Timeout')) {
+        } elsif ($e->isa('Async::Redis::Error::Timeout')) {
             # Timeout error
-        } elsif ($e->isa('Future::IO::Redis::Error::Redis')) {
+        } elsif ($e->isa('Async::Redis::Error::Redis')) {
             # Redis error (e.g., WRONGTYPE)
         }
     }
@@ -3472,60 +3472,60 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Error - Exception classes for Future::IO::Redis
+Async::Redis::Error - Exception classes for Async::Redis
 
 =head1 SYNOPSIS
 
-    use Future::IO::Redis::Error;
+    use Async::Redis::Error;
     use Try::Tiny;
 
     try {
         await $redis->connect;
     } catch {
-        if ($_->isa('Future::IO::Redis::Error::Connection')) {
+        if ($_->isa('Async::Redis::Error::Connection')) {
             warn "Connection failed: " . $_->message;
         }
     };
 
 =head1 DESCRIPTION
 
-This module provides exception classes for Future::IO::Redis operations.
+This module provides exception classes for Async::Redis operations.
 
 =head1 EXCEPTION CLASSES
 
-=head2 Future::IO::Redis::Error
+=head2 Async::Redis::Error
 
 Base class for all exceptions.
 
 Methods: C<message>, C<command>, C<throw>, C<as_string>
 
-=head2 Future::IO::Redis::Error::Connection
+=head2 Async::Redis::Error::Connection
 
 Connection-related errors (refused, reset, etc.)
 
-=head2 Future::IO::Redis::Error::Timeout
+=head2 Async::Redis::Error::Timeout
 
 Timeout errors (connect, request, read, write).
 
 Attributes: C<timeout_type>, C<timeout_seconds>
 
-=head2 Future::IO::Redis::Error::Protocol
+=head2 Async::Redis::Error::Protocol
 
 Protocol parsing errors.
 
-=head2 Future::IO::Redis::Error::Redis
+=head2 Async::Redis::Error::Redis
 
 Errors returned by Redis (WRONGTYPE, ERR, etc.)
 
 Attributes: C<error_type>
 
-=head2 Future::IO::Redis::Error::Auth
+=head2 Async::Redis::Error::Auth
 
 Authentication failures.
 
 =head1 SEE ALSO
 
-L<Future::IO::Redis>
+L<Async::Redis>
 
 =cut
 ```
@@ -3570,11 +3570,11 @@ EOF
 Update `README.md`:
 
 ```markdown
-# Future::IO::Redis
+# Async::Redis
 
 Async Redis client for Perl using Future::IO
 
-[![CPAN Version](https://badge.fury.io/pl/Future-IO-Redis.svg)](https://metacpan.org/pod/Future::IO::Redis)
+[![CPAN Version](https://badge.fury.io/pl/Future-IO-Redis.svg)](https://metacpan.org/pod/Async::Redis)
 [![Build Status](https://github.com/yourusername/Future-IO-Redis/workflows/Test/badge.svg)](https://github.com/yourusername/Future-IO-Redis/actions)
 
 ## Features
@@ -3593,7 +3593,7 @@ Async Redis client for Perl using Future::IO
 ## Installation
 
 ```bash
-cpanm Future::IO::Redis
+cpanm Async::Redis
 ```
 
 Or from source:
@@ -3608,10 +3608,10 @@ perl Makefile.PL && make test && make install
 ## Quick Start
 
 ```perl
-use Future::IO::Redis;
+use Async::Redis;
 use Future::AsyncAwait;
 
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     host => 'localhost',
     port => 6379,
 );
@@ -3636,12 +3636,12 @@ await $redis->disconnect;
 
 ## Documentation
 
-Full documentation available on [MetaCPAN](https://metacpan.org/pod/Future::IO::Redis).
+Full documentation available on [MetaCPAN](https://metacpan.org/pod/Async::Redis).
 
 ### Connection Options
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     # Connection
     host => 'localhost',
     port => 6379,
@@ -3679,7 +3679,7 @@ my $redis = Future::IO::Redis->new(
 ### Connection Pooling
 
 ```perl
-my $pool = Future::IO::Redis::Pool->new(
+my $pool = Async::Redis::Pool->new(
     host => 'localhost',
     min_connections => 2,
     max_connections => 10,
@@ -3791,9 +3791,9 @@ EOF
 Create `CONTRIBUTING.md`:
 
 ```markdown
-# Contributing to Future::IO::Redis
+# Contributing to Async::Redis
 
-Thank you for considering contributing to Future::IO::Redis!
+Thank you for considering contributing to Async::Redis!
 
 ## Development Setup
 
@@ -4079,10 +4079,10 @@ Before release, verify:
 
 ## Summary
 
-Phase 8 completes the Future::IO::Redis implementation with:
+Phase 8 completes the Async::Redis implementation with:
 
 1. **Task 20: Reliability Testing**
-   - Test helper module (Test::Future::IO::Redis)
+   - Test helper module (Test::Async::Redis)
    - Docker Compose infrastructure
    - Redis restart tests
    - Network partition tests

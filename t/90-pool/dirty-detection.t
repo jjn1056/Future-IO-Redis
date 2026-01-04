@@ -2,16 +2,16 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Future::AsyncAwait;
 use Test2::V0;
-use Future::IO::Redis::Pool;
+use Async::Redis::Pool;
 use Future;
 
 SKIP: {
     my $test_redis = eval {
-        require Future::IO::Redis;
-        my $r = Future::IO::Redis->new(
+        require Async::Redis;
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
         );
@@ -22,7 +22,7 @@ SKIP: {
     $test_redis->disconnect;
 
     subtest 'is_dirty detects in_multi' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
 
@@ -43,7 +43,7 @@ SKIP: {
     };
 
     subtest 'is_dirty detects watching' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
 
@@ -60,7 +60,7 @@ SKIP: {
     };
 
     subtest 'is_dirty detects in_pubsub' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
 
@@ -77,7 +77,7 @@ SKIP: {
     };
 
     subtest 'clean connection reused' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
 
@@ -96,7 +96,7 @@ SKIP: {
     };
 
     subtest 'properly completed transaction is clean' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
 
@@ -124,7 +124,7 @@ SKIP: {
     };
 
     subtest 'discard clears in_multi' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
 
@@ -140,7 +140,7 @@ SKIP: {
     };
 
     subtest 'unwatch clears watching' => sub {
-        my $pool = Future::IO::Redis::Pool->new(
+        my $pool = Async::Redis::Pool->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
 

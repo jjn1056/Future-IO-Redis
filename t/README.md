@@ -1,4 +1,4 @@
-# Future::IO::Redis Test Suite
+# Async::Redis Test Suite
 
 ## Prerequisites
 

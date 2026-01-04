@@ -1,4 +1,4 @@
-package Future::IO::Redis::Telemetry;
+package Async::Redis::Telemetry;
 
 use strict;
 use warnings;
@@ -432,14 +432,14 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Telemetry - Observability for Redis client
+Async::Redis::Telemetry - Observability for Redis client
 
 =head1 SYNOPSIS
 
-    use Future::IO::Redis;
+    use Async::Redis;
     use OpenTelemetry;
 
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host => 'localhost',
 
         # OpenTelemetry integration

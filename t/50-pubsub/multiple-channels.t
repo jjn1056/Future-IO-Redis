@@ -2,15 +2,15 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Future::AsyncAwait;
 use Test2::V0;
-use Future::IO::Redis;
+use Async::Redis;
 use Future;
 
 SKIP: {
     my $publisher = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
         );
@@ -20,7 +20,7 @@ SKIP: {
     skip "Redis not available: $@", 1 unless $publisher;
 
     subtest 'subscribe to many channels at once' => sub {
-        my $subscriber = Future::IO::Redis->new(
+        my $subscriber = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $subscriber->connect };
@@ -36,7 +36,7 @@ SKIP: {
     };
 
     subtest 'receive from multiple channels' => sub {
-        my $subscriber = Future::IO::Redis->new(
+        my $subscriber = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $subscriber->connect };
@@ -69,7 +69,7 @@ SKIP: {
     };
 
     subtest 'add channels to existing subscription' => sub {
-        my $subscriber = Future::IO::Redis->new(
+        my $subscriber = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
         );
         run { $subscriber->connect };

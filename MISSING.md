@@ -317,7 +317,7 @@ sub ready_for_read {
 
 **Current Workaround:**
 ```perl
-# In Future::IO::Redis, we:
+# In Async::Redis, we:
 # 1. Access internal state to cancel futures and remove from watching hashes
 no strict 'refs';
 if (my $watching = delete ${'Future::IO::Impl::IOAsync::watching_read_by_fileno'}{$fileno}) {
@@ -362,7 +362,7 @@ sub ready_for_read {
 
 ## Notes
 
-These observations come from building Future::IO::Redis, specifically:
+These observations come from building Async::Redis, specifically:
 
 - **Timeouts**: Every Redis operation needs timeout handling. Composing `->timeout()` externally works but is verbose.
 

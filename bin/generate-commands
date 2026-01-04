@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 # bin/generate-commands
 #
-# Generates Future::IO::Redis::Commands from redis-doc commands.json
+# Generates Async::Redis::Commands from redis-doc commands.json
 
 use strict;
 use warnings;
@@ -19,7 +19,7 @@ GetOptions(
 usage() if $help;
 
 $input  //= 'share/commands.json';
-$output //= 'lib/Future/IO/Redis/Commands.pm';
+$output //= 'lib/Async/Redis/Commands.pm';
 
 die "Input file not found: $input\n" unless -f $input;
 
@@ -47,7 +47,7 @@ exit 0;
 sub usage {
     say "Usage: $0 [--input FILE] [--output FILE]";
     say "  --input   Path to commands.json (default: share/commands.json)";
-    say "  --output  Output module path (default: lib/Future/IO/Redis/Commands.pm)";
+    say "  --output  Output module path (default: lib/Async/Redis/Commands.pm)";
     exit 1;
 }
 
@@ -70,14 +70,14 @@ sub generate_module {
     }
 
     return <<"END_MODULE";
-# lib/Future/IO/Redis/Commands.pm
+# lib/Async/Redis/Commands.pm
 # AUTO-GENERATED - DO NOT EDIT
 # Generated from redis-doc commands.json
 #
 # This module provides async method wrappers for all Redis commands.
-# Consume this role in Future::IO::Redis.
+# Consume this role in Async::Redis.
 
-package Future::IO::Redis::Commands;
+package Async::Redis::Commands;
 
 use strict;
 use warnings;
@@ -93,7 +93,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Commands - Auto-generated Redis command methods
+Async::Redis::Commands - Auto-generated Redis command methods
 
 =head1 DESCRIPTION
 

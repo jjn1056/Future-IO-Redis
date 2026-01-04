@@ -1,4 +1,4 @@
-package Future::IO::Redis::URI;
+package Async::Redis::URI;
 
 use strict;
 use warnings;
@@ -121,7 +121,7 @@ sub password { shift->{password} }
 sub tls      { shift->{tls} }
 sub is_unix  { shift->{is_unix} }
 
-# Convert to hash suitable for Future::IO::Redis->new()
+# Convert to hash suitable for Async::Redis->new()
 sub to_hash {
     my ($self) = @_;
     my %hash;
@@ -147,20 +147,20 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::URI - Redis connection URI parser
+Async::Redis::URI - Redis connection URI parser
 
 =head1 SYNOPSIS
 
-    use Future::IO::Redis::URI;
+    use Async::Redis::URI;
 
-    my $uri = Future::IO::Redis::URI->parse('redis://localhost:6379/0');
+    my $uri = Async::Redis::URI->parse('redis://localhost:6379/0');
 
     say $uri->host;      # localhost
     say $uri->port;      # 6379
     say $uri->database;  # 0
 
     # Use with constructor
-    my $redis = Future::IO::Redis->new($uri->to_hash);
+    my $redis = Async::Redis->new($uri->to_hash);
 
 =head1 DESCRIPTION
 
@@ -181,7 +181,7 @@ Returns undef for empty/undef input. Dies on invalid URI.
 
 =head2 to_hash
 
-Returns hash suitable for passing to Future::IO::Redis->new().
+Returns hash suitable for passing to Async::Redis->new().
 
 =head2 Accessors
 

@@ -1,4 +1,4 @@
-package Future::IO::Redis::Iterator;
+package Async::Redis::Iterator;
 
 use strict;
 use warnings;
@@ -87,7 +87,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Iterator - Cursor-based SCAN iterator
+Async::Redis::Iterator - Cursor-based SCAN iterator
 
 =head1 SYNOPSIS
 

@@ -1,4 +1,4 @@
-package Future::IO::Redis::Subscription;
+package Async::Redis::Subscription;
 
 use strict;
 use warnings;
@@ -306,7 +306,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Subscription - PubSub subscription handler
+Async::Redis::Subscription - PubSub subscription handler
 
 =head1 SYNOPSIS
 

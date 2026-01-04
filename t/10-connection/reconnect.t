@@ -2,15 +2,15 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time sleep);
 
 # Helper: await a Future and return its result (throws on failure)
 
 subtest 'constructor accepts reconnect parameters' => sub {
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host                => 'localhost',
         reconnect           => 1,
         reconnect_delay     => 0.1,
@@ -25,7 +25,7 @@ subtest 'constructor accepts reconnect parameters' => sub {
 };
 
 subtest 'default reconnect values' => sub {
-    my $redis = Future::IO::Redis->new(host => 'localhost');
+    my $redis = Async::Redis->new(host => 'localhost');
 
     ok(!$redis->{reconnect}, 'reconnect disabled by default');
     is($redis->{reconnect_delay}, 0.1, 'default reconnect_delay');
@@ -36,7 +36,7 @@ subtest 'default reconnect values' => sub {
 subtest 'callbacks accepted' => sub {
     my @events;
 
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host          => 'localhost',
         on_connect    => sub { push @events, ['connect', @_] },
         on_disconnect => sub { push @events, ['disconnect', @_] },
@@ -49,7 +49,7 @@ subtest 'callbacks accepted' => sub {
 };
 
 subtest 'exponential backoff calculation' => sub {
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host                => 'localhost',
         reconnect_delay     => 0.1,
         reconnect_delay_max => 10,
@@ -66,7 +66,7 @@ subtest 'exponential backoff calculation' => sub {
 };
 
 subtest 'jitter applied to backoff' => sub {
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host                => 'localhost',
         reconnect_delay     => 1,
         reconnect_delay_max => 60,
@@ -90,7 +90,7 @@ subtest 'jitter applied to backoff' => sub {
 # Tests requiring Redis
 SKIP: {
     my $test_redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host            => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
         );
@@ -103,7 +103,7 @@ SKIP: {
     subtest 'on_connect callback fires' => sub {
         my @events;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host       => $ENV{REDIS_HOST} // 'localhost',
             on_connect => sub {
                 my ($r) = @_;
@@ -120,7 +120,7 @@ SKIP: {
     subtest 'on_disconnect callback fires' => sub {
         my @events;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host          => $ENV{REDIS_HOST} // 'localhost',
             on_disconnect => sub {
                 my ($r, $reason) = @_;
@@ -138,7 +138,7 @@ SKIP: {
     subtest 'reconnect after disconnect' => sub {
         my @events;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host          => $ENV{REDIS_HOST} // 'localhost',
             reconnect     => 1,
             on_connect    => sub { push @events, 'connect' },

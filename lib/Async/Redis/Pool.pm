@@ -1,4 +1,4 @@
-package Future::IO::Redis::Pool;
+package Async::Redis::Pool;
 
 use strict;
 use warnings;
@@ -7,8 +7,8 @@ use 5.018;
 use Future;
 use Future::AsyncAwait;
 use Future::IO;
-use Future::IO::Redis;
-use Future::IO::Redis::Error::Timeout;
+use Async::Redis;
+use Async::Redis::Error::Timeout;
 
 our $VERSION = '0.001';
 
@@ -16,7 +16,7 @@ sub new {
     my ($class, %args) = @_;
 
     my $self = bless {
-        # Connection params (passed to Future::IO::Redis->new)
+        # Connection params (passed to Async::Redis->new)
         host     => $args{host} // 'localhost',
         port     => $args{port} // 6379,
         password => $args{password},
@@ -139,7 +139,7 @@ async sub acquire {
     push @{$self->{_waiters}}, $waiter;
 
     my $timeout_future = Future::IO->sleep($self->{acquire_timeout})->then(sub {
-        Future->fail(Future::IO::Redis::Error::Timeout->new(
+        Future->fail(Async::Redis::Error::Timeout->new(
             message => "Acquire timed out after $self->{acquire_timeout}s",
             timeout => $self->{acquire_timeout},
         ));
@@ -232,7 +232,7 @@ async sub _create_connection {
     $conn_args{tls}      = $self->{tls}      if $self->{tls};
     $conn_args{uri}      = $self->{uri}      if $self->{uri};
 
-    my $conn = Future::IO::Redis->new(%conn_args);
+    my $conn = Async::Redis->new(%conn_args);
     await $conn->connect;
 
     $self->{_total_created}++;
@@ -412,11 +412,11 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Pool - Connection pool for Future::IO::Redis
+Async::Redis::Pool - Connection pool for Async::Redis
 
 =head1 SYNOPSIS
 
-    my $pool = Future::IO::Redis::Pool->new(
+    my $pool = Async::Redis::Pool->new(
         host => 'localhost',
         min  => 2,
         max  => 10,

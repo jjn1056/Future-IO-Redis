@@ -1,4 +1,4 @@
-package Future::IO::Redis::AutoPipeline;
+package Async::Redis::AutoPipeline;
 
 use strict;
 use warnings;
@@ -122,7 +122,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::AutoPipeline - Automatic command batching
+Async::Redis::AutoPipeline - Automatic command batching
 
 =head1 DESCRIPTION
 

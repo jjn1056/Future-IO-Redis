@@ -1,4 +1,4 @@
-package Future::IO::Redis;
+package Async::Redis;
 
 use strict;
 use warnings;
@@ -14,37 +14,37 @@ use IO::Socket::INET;
 use Time::HiRes ();
 
 # Error classes
-use Future::IO::Redis::Error::Connection;
-use Future::IO::Redis::Error::Timeout;
-use Future::IO::Redis::Error::Disconnected;
-use Future::IO::Redis::Error::Redis;
-use Future::IO::Redis::Error::Protocol;
+use Async::Redis::Error::Connection;
+use Async::Redis::Error::Timeout;
+use Async::Redis::Error::Disconnected;
+use Async::Redis::Error::Redis;
+use Async::Redis::Error::Protocol;
 
 # Import auto-generated command methods
-use Future::IO::Redis::Commands;
-our @ISA = qw(Future::IO::Redis::Commands);
+use Async::Redis::Commands;
+our @ISA = qw(Async::Redis::Commands);
 
 # Key extraction for prefixing
-use Future::IO::Redis::KeyExtractor;
+use Async::Redis::KeyExtractor;
 
 # Transaction support
-use Future::IO::Redis::Transaction;
+use Async::Redis::Transaction;
 
 # Script support
-use Future::IO::Redis::Script;
+use Async::Redis::Script;
 
 # Iterator support
-use Future::IO::Redis::Iterator;
+use Async::Redis::Iterator;
 
 # Pipeline support
-use Future::IO::Redis::Pipeline;
-use Future::IO::Redis::AutoPipeline;
+use Async::Redis::Pipeline;
+use Async::Redis::AutoPipeline;
 
 # PubSub support
-use Future::IO::Redis::Subscription;
+use Async::Redis::Subscription;
 
 # Telemetry support
-use Future::IO::Redis::Telemetry;
+use Async::Redis::Telemetry;
 
 # Try XS version first, fall back to pure Perl
 BEGIN {
@@ -80,8 +80,8 @@ sub new {
 
     # Parse URI if provided
     if ($args{uri}) {
-        require Future::IO::Redis::URI;
-        my $uri = Future::IO::Redis::URI->parse($args{uri});
+        require Async::Redis::URI;
+        my $uri = Async::Redis::URI->parse($args{uri});
         if ($uri) {
             my %uri_args = $uri->to_hash;
             # URI values are defaults, explicit args override
@@ -157,7 +157,7 @@ sub new {
 
     # Initialize telemetry if any observability enabled
     if ($self->{debug} || $self->{otel_tracer} || $self->{otel_meter}) {
-        $self->{_telemetry} = Future::IO::Redis::Telemetry->new(
+        $self->{_telemetry} = Async::Redis::Telemetry->new(
             tracer       => $self->{otel_tracer},
             meter        => $self->{otel_meter},
             debug        => $self->{debug},
@@ -182,7 +182,7 @@ async sub connect {
     my $socket = IO::Socket::INET->new(
         Proto    => 'tcp',
         Blocking => 0,
-    ) or die Future::IO::Redis::Error::Connection->new(
+    ) or die Async::Redis::Error::Connection->new(
         message => "Cannot create socket: $!",
         host    => $self->{host},
         port    => $self->{port},
@@ -190,7 +190,7 @@ async sub connect {
 
     # Build sockaddr
     my $addr = inet_aton($self->{host})
-        or die Future::IO::Redis::Error::Connection->new(
+        or die Async::Redis::Error::Connection->new(
             message => "Cannot resolve host: $self->{host}",
             host    => $self->{host},
             port    => $self->{port},
@@ -227,12 +227,12 @@ async sub connect {
         close $socket;
 
         if ($error eq 'connect_timeout') {
-            die Future::IO::Redis::Error::Timeout->new(
+            die Async::Redis::Error::Timeout->new(
                 message => "Connect timed out after $self->{connect_timeout}s",
                 timeout => $self->{connect_timeout},
             );
         }
-        die Future::IO::Redis::Error::Connection->new(
+        die Async::Redis::Error::Connection->new(
             message => "$error",
             host    => $self->{host},
             port    => $self->{port},
@@ -261,7 +261,7 @@ async sub connect {
 
     # Initialize auto-pipeline if enabled
     if ($self->{auto_pipeline}) {
-        $self->{_auto_pipeline} = Future::IO::Redis::AutoPipeline->new(
+        $self->{_auto_pipeline} = Async::Redis::AutoPipeline->new(
             redis     => $self,
             max_depth => $self->{pipeline_depth},
         );
@@ -300,7 +300,7 @@ async sub _redis_handshake {
 
         # AUTH returns OK on success, throws on failure
         unless ($result && $result eq 'OK') {
-            die Future::IO::Redis::Error::Redis->new(
+            die Async::Redis::Error::Redis->new(
                 message => "Authentication failed: $result",
                 type    => 'NOAUTH',
             );
@@ -316,7 +316,7 @@ async sub _redis_handshake {
         my $result = $self->_decode_response($response);
 
         unless ($result && $result eq 'OK') {
-            die Future::IO::Redis::Error::Redis->new(
+            die Async::Redis::Error::Redis->new(
                 message => "SELECT failed: $result",
                 type    => 'ERR',
             );
@@ -552,7 +552,7 @@ async sub _tls_upgrade {
 
     # Start SSL (does not block because SSL_startHandshake => 0)
     IO::Socket::SSL->start_SSL($socket, %ssl_opts)
-        or die Future::IO::Redis::Error::Connection->new(
+        or die Async::Redis::Error::Connection->new(
             message => "SSL setup failed: " . IO::Socket::SSL::errstr(),
             host    => $self->{host},
             port    => $self->{port},
@@ -564,7 +564,7 @@ async sub _tls_upgrade {
     while (1) {
         # Check timeout
         if (Time::HiRes::time() >= $deadline) {
-            die Future::IO::Redis::Error::Timeout->new(
+            die Async::Redis::Error::Timeout->new(
                 message => "TLS handshake timed out",
                 timeout => $self->{connect_timeout},
             );
@@ -593,7 +593,7 @@ async sub _tls_upgrade {
             await $wait_f;
 
             if ($wait_f->is_failed) {
-                die Future::IO::Redis::Error::Timeout->new(
+                die Async::Redis::Error::Timeout->new(
                     message => "TLS handshake timed out",
                     timeout => $self->{connect_timeout},
                 );
@@ -610,7 +610,7 @@ async sub _tls_upgrade {
             await $wait_f;
 
             if ($wait_f->is_failed) {
-                die Future::IO::Redis::Error::Timeout->new(
+                die Async::Redis::Error::Timeout->new(
                     message => "TLS handshake timed out",
                     timeout => $self->{connect_timeout},
                 );
@@ -618,7 +618,7 @@ async sub _tls_upgrade {
         }
         else {
             # Actual error
-            die Future::IO::Redis::Error::Connection->new(
+            die Async::Redis::Error::Connection->new(
                 message => "TLS handshake failed: " . IO::Socket::SSL::errstr(),
                 host    => $self->{host},
                 port    => $self->{port},
@@ -664,7 +664,7 @@ async sub command {
     if ($self->{in_pubsub}) {
         my $ucmd = uc($cmd // '');
         unless ($ucmd =~ /^(SUBSCRIBE|UNSUBSCRIBE|PSUBSCRIBE|PUNSUBSCRIBE|SSUBSCRIBE|SUNSUBSCRIBE|PING|QUIT)$/) {
-            die Future::IO::Redis::Error::Protocol->new(
+            die Async::Redis::Error::Protocol->new(
                 message => "Cannot execute '$cmd' on connection in PubSub mode",
             );
         }
@@ -672,7 +672,7 @@ async sub command {
 
     # Apply key prefixing if configured
     if (defined $self->{prefix} && $self->{prefix} ne '') {
-        @args = Future::IO::Redis::KeyExtractor::apply_prefix(
+        @args = Async::Redis::KeyExtractor::apply_prefix(
             $self->{prefix}, $cmd, @args
         );
     }
@@ -687,7 +687,7 @@ async sub command {
         await $self->_reconnect;
     }
 
-    die Future::IO::Redis::Error::Disconnected->new(
+    die Async::Redis::Error::Disconnected->new(
         message => "Not connected",
     ) unless $self->{connected};
 
@@ -748,7 +748,7 @@ async sub _read_response_with_deadline {
 
         if ($remaining <= 0) {
             $self->_reset_connection;
-            die Future::IO::Redis::Error::Timeout->new(
+            die Async::Redis::Error::Timeout->new(
                 message        => "Request timed out after $self->{request_timeout}s",
                 command        => $cmd_ref,
                 timeout        => $self->{request_timeout},
@@ -769,7 +769,7 @@ async sub _read_response_with_deadline {
             my ($error) = $wait_f->failure;
             if ($error eq 'read_timeout') {
                 $self->_reset_connection;
-                die Future::IO::Redis::Error::Timeout->new(
+                die Async::Redis::Error::Timeout->new(
                     message        => "Request timed out after $self->{request_timeout}s",
                     command        => $cmd_ref,
                     timeout        => $self->{request_timeout},
@@ -777,7 +777,7 @@ async sub _read_response_with_deadline {
                 );
             }
             $self->_reset_connection;
-            die Future::IO::Redis::Error::Connection->new(
+            die Async::Redis::Error::Connection->new(
                 message => "$error",
             );
         }
@@ -788,7 +788,7 @@ async sub _read_response_with_deadline {
         # EOF
         if (!defined $buf || length($buf) == 0) {
             $self->_reset_connection;
-            die Future::IO::Redis::Error::Connection->new(
+            die Async::Redis::Error::Connection->new(
                 message => "Connection closed by server",
             );
         }
@@ -982,7 +982,7 @@ async sub evalsha_or_eval {
 
 sub script {
     my ($self, $code) = @_;
-    return Future::IO::Redis::Script->new(
+    return Async::Redis::Script->new(
         redis  => $self,
         script => $code,
     );
@@ -994,7 +994,7 @@ sub script {
 
 sub scan_iter {
     my ($self, %opts) = @_;
-    return Future::IO::Redis::Iterator->new(
+    return Async::Redis::Iterator->new(
         redis   => $self,
         command => 'SCAN',
         match   => $opts{match},
@@ -1005,7 +1005,7 @@ sub scan_iter {
 
 sub hscan_iter {
     my ($self, $key, %opts) = @_;
-    return Future::IO::Redis::Iterator->new(
+    return Async::Redis::Iterator->new(
         redis   => $self,
         command => 'HSCAN',
         key     => $key,
@@ -1016,7 +1016,7 @@ sub hscan_iter {
 
 sub sscan_iter {
     my ($self, $key, %opts) = @_;
-    return Future::IO::Redis::Iterator->new(
+    return Async::Redis::Iterator->new(
         redis   => $self,
         command => 'SSCAN',
         key     => $key,
@@ -1027,7 +1027,7 @@ sub sscan_iter {
 
 sub zscan_iter {
     my ($self, $key, %opts) = @_;
-    return Future::IO::Redis::Iterator->new(
+    return Async::Redis::Iterator->new(
         redis   => $self,
         command => 'ZSCAN',
         key     => $key,
@@ -1053,7 +1053,7 @@ async sub multi {
     my @commands;
     eval {
         # Create transaction collector
-        my $tx = Future::IO::Redis::Transaction->new(redis => $self);
+        my $tx = Async::Redis::Transaction->new(redis => $self);
 
         # Run callback to collect commands
         await $callback->($tx);
@@ -1175,7 +1175,7 @@ async sub watch_multi {
     }
 
     # Create transaction collector
-    my $tx = Future::IO::Redis::Transaction->new(redis => $self);
+    my $tx = Async::Redis::Transaction->new(redis => $self);
 
     # Run callback with watched values
     await $callback->($tx, \%watched);
@@ -1233,12 +1233,12 @@ async sub spublish {
 async sub subscribe {
     my ($self, @channels) = @_;
 
-    die Future::IO::Redis::Error::Disconnected->new(
+    die Async::Redis::Error::Disconnected->new(
         message => "Not connected",
     ) unless $self->{connected};
 
     # Create or reuse subscription
-    my $sub = $self->{_subscription} //= Future::IO::Redis::Subscription->new(redis => $self);
+    my $sub = $self->{_subscription} //= Async::Redis::Subscription->new(redis => $self);
 
     # Send SUBSCRIBE command
     await $self->_send_command('SUBSCRIBE', @channels);
@@ -1259,11 +1259,11 @@ async sub subscribe {
 async sub psubscribe {
     my ($self, @patterns) = @_;
 
-    die Future::IO::Redis::Error::Disconnected->new(
+    die Async::Redis::Error::Disconnected->new(
         message => "Not connected",
     ) unless $self->{connected};
 
-    my $sub = $self->{_subscription} //= Future::IO::Redis::Subscription->new(redis => $self);
+    my $sub = $self->{_subscription} //= Async::Redis::Subscription->new(redis => $self);
 
     await $self->_send_command('PSUBSCRIBE', @patterns);
 
@@ -1281,11 +1281,11 @@ async sub psubscribe {
 async sub ssubscribe {
     my ($self, @channels) = @_;
 
-    die Future::IO::Redis::Error::Disconnected->new(
+    die Async::Redis::Error::Disconnected->new(
         message => "Not connected",
     ) unless $self->{connected};
 
-    my $sub = $self->{_subscription} //= Future::IO::Redis::Subscription->new(redis => $self);
+    my $sub = $self->{_subscription} //= Async::Redis::Subscription->new(redis => $self);
 
     await $self->_send_command('SSUBSCRIBE', @channels);
 
@@ -1332,7 +1332,7 @@ async sub _read_pubsub_message {
 
 sub pipeline {
     my ($self, %opts) = @_;
-    return Future::IO::Redis::Pipeline->new(
+    return Async::Redis::Pipeline->new(
         redis     => $self,
         max_depth => $opts{max_depth} // $self->{pipeline_depth},
     );
@@ -1389,11 +1389,11 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis - Async Redis client using Future::IO
+Async::Redis - Async Redis client using Future::IO
 
 =head1 SYNOPSIS
 
-    use Future::IO::Redis;
+    use Async::Redis;
     use Future::AsyncAwait;
 
     # Use any Future::IO-compatible event loop
@@ -1406,7 +1406,7 @@ Future::IO::Redis - Async Redis client using Future::IO
     # Or UV:   Future::IO->load_impl('UV');
     # Or Glib: Future::IO->load_impl('Glib');
 
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host => 'localhost',
         port => 6379,
     );
@@ -1436,7 +1436,7 @@ Future::IO::Redis - Async Redis client using Future::IO
 
 =head1 DESCRIPTION
 
-Future::IO::Redis is an asynchronous Redis client built on L<Future::IO>,
+Async::Redis is an asynchronous Redis client built on L<Future::IO>,
 providing a modern, non-blocking interface for Redis operations.
 
 Key features:
@@ -1471,7 +1471,7 @@ Key features:
 
 =head2 new
 
-    my $redis = Future::IO::Redis->new(%options);
+    my $redis = Async::Redis->new(%options);
 
 Creates a new Redis client instance. Does not connect immediately.
 
@@ -1648,7 +1648,7 @@ sent in a single network round-trip.
 
     my $sub = await $redis->subscribe('channel1', 'channel2');
 
-Subscribe to channels. Returns a L<Future::IO::Redis::Subscription> object.
+Subscribe to channels. Returns a L<Async::Redis::Subscription> object.
 
 =head2 psubscribe
 
@@ -1700,11 +1700,11 @@ Create an iterator for SCAN. Also available: hscan_iter, sscan_iter, zscan_iter.
 
 =head1 CONNECTION POOLING
 
-For high-throughput applications, use L<Future::IO::Redis::Pool>:
+For high-throughput applications, use L<Async::Redis::Pool>:
 
-    use Future::IO::Redis::Pool;
+    use Async::Redis::Pool;
 
-    my $pool = Future::IO::Redis::Pool->new(
+    my $pool = Async::Redis::Pool->new(
         host => 'localhost',
         min  => 2,
         max  => 10,
@@ -1725,11 +1725,11 @@ Errors are thrown as exception objects:
     try {
         await $redis->get('key');
     } catch {
-        if ($_->isa('Future::IO::Redis::Error::Connection')) {
+        if ($_->isa('Async::Redis::Error::Connection')) {
             # Connection error
-        } elsif ($_->isa('Future::IO::Redis::Error::Timeout')) {
+        } elsif ($_->isa('Async::Redis::Error::Timeout')) {
             # Timeout error
-        } elsif ($_->isa('Future::IO::Redis::Error::Redis')) {
+        } elsif ($_->isa('Async::Redis::Error::Redis')) {
             # Redis error (e.g., WRONGTYPE)
         }
     };
@@ -1738,23 +1738,23 @@ Exception classes:
 
 =over 4
 
-=item Future::IO::Redis::Error::Connection
+=item Async::Redis::Error::Connection
 
 Connection-related errors (refused, reset, etc.)
 
-=item Future::IO::Redis::Error::Timeout
+=item Async::Redis::Error::Timeout
 
 Timeout errors (connect, request, read).
 
-=item Future::IO::Redis::Error::Protocol
+=item Async::Redis::Error::Protocol
 
 Protocol parsing errors.
 
-=item Future::IO::Redis::Error::Redis
+=item Async::Redis::Error::Redis
 
 Errors returned by Redis (WRONGTYPE, ERR, etc.)
 
-=item Future::IO::Redis::Error::Disconnected
+=item Async::Redis::Error::Disconnected
 
 Operation attempted on disconnected client.
 
@@ -1762,7 +1762,7 @@ Operation attempted on disconnected client.
 
 =head1 FORK SAFETY
 
-Future::IO::Redis is fork-safe. When a fork is detected, the child
+Async::Redis is fork-safe. When a fork is detected, the child
 process will automatically invalidate its connection state and
 reconnect when needed. The parent retains ownership of the original
 connection.
@@ -1773,7 +1773,7 @@ OpenTelemetry integration is available:
 
     use OpenTelemetry::SDK;
 
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host        => 'localhost',
         otel_tracer => OpenTelemetry->tracer_provider->tracer('my-app'),
         otel_meter  => OpenTelemetry->meter_provider->meter('my-app'),
@@ -1799,9 +1799,9 @@ This enables:
 
 =item * L<Future::AsyncAwait> - Async/await syntax support
 
-=item * L<Future::IO::Redis::Pool> - Connection pooling
+=item * L<Async::Redis::Pool> - Connection pooling
 
-=item * L<Future::IO::Redis::Subscription> - PubSub subscriptions
+=item * L<Async::Redis::Subscription> - PubSub subscriptions
 
 =item * L<Redis> - Synchronous Redis client
 

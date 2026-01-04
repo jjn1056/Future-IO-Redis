@@ -1,4 +1,4 @@
-# Future::IO::Redis Phase 4: Blocking Commands & SCAN Iterators
+# Async::Redis Phase 4: Blocking Commands & SCAN Iterators
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -39,14 +39,14 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time);
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -176,14 +176,14 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time);
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -264,14 +264,14 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time);
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -372,14 +372,14 @@ done_testing;
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time);
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => 'localhost',
             connect_timeout => 2,
             blocking_timeout_buffer => 2,  # 2 second buffer
@@ -409,7 +409,7 @@ SKIP: {
         # The buffer ensures client doesn't timeout before server response arrives
         # This is hard to test directly, but we can verify the setting is respected
 
-        my $redis_short = Future::IO::Redis->new(
+        my $redis_short = Async::Redis->new(
             host => 'localhost',
             blocking_timeout_buffer => 0.5,  # short buffer
         );
@@ -471,25 +471,25 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time);
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis1 = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
     skip "Redis not available: $@", 1 unless $redis1;
 
     # Second connection for concurrent operations
-    my $redis2 = Future::IO::Redis->new(host => 'localhost');
+    my $redis2 = Async::Redis->new(host => 'localhost');
     $loop->await($redis2->connect);
 
     # Third connection for pushing data
-    my $pusher = Future::IO::Redis->new(host => 'localhost');
+    my $pusher = Async::Redis->new(host => 'localhost');
     $loop->await($pusher->connect);
 
     subtest 'multiple concurrent BLPOP on different queues' => sub {
@@ -569,7 +569,7 @@ SKIP: {
 done_testing;
 ```
 
-### Step 7: Verify blocking command timeout logic in Future::IO::Redis
+### Step 7: Verify blocking command timeout logic in Async::Redis
 
 The key implementation is the `_calculate_deadline` and `_is_blocking_command` methods. Verify they exist in `lib/Future/IO/Redis.pm`:
 
@@ -688,13 +688,13 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -810,7 +810,7 @@ Expected: FAIL (Iterator.pm not implemented)
 
 ```perl
 # lib/Future/IO/Redis/Iterator.pm
-package Future::IO::Redis::Iterator;
+package Async::Redis::Iterator;
 
 use strict;
 use warnings;
@@ -898,7 +898,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Iterator - Cursor-based SCAN iterator
+Async::Redis::Iterator - Cursor-based SCAN iterator
 
 =head1 SYNOPSIS
 
@@ -930,16 +930,16 @@ Iterator provides async cursor-based iteration over Redis SCAN commands:
 =cut
 ```
 
-### Step 4: Add scan_iter methods to Future::IO::Redis
+### Step 4: Add scan_iter methods to Async::Redis
 
 Edit `lib/Future/IO/Redis.pm`:
 
 ```perl
-use Future::IO::Redis::Iterator;
+use Async::Redis::Iterator;
 
 sub scan_iter {
     my ($self, %opts) = @_;
-    return Future::IO::Redis::Iterator->new(
+    return Async::Redis::Iterator->new(
         redis   => $self,
         command => 'SCAN',
         match   => $opts{match},
@@ -950,7 +950,7 @@ sub scan_iter {
 
 sub hscan_iter {
     my ($self, $key, %opts) = @_;
-    return Future::IO::Redis::Iterator->new(
+    return Async::Redis::Iterator->new(
         redis   => $self,
         command => 'HSCAN',
         key     => $key,
@@ -961,7 +961,7 @@ sub hscan_iter {
 
 sub sscan_iter {
     my ($self, $key, %opts) = @_;
-    return Future::IO::Redis::Iterator->new(
+    return Async::Redis::Iterator->new(
         redis   => $self,
         command => 'SSCAN',
         key     => $key,
@@ -972,7 +972,7 @@ sub sscan_iter {
 
 sub zscan_iter {
     my ($self, $key, %opts) = @_;
-    return Future::IO::Redis::Iterator->new(
+    return Async::Redis::Iterator->new(
         redis   => $self,
         command => 'ZSCAN',
         key     => $key,
@@ -994,13 +994,13 @@ Expected: PASS
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -1072,13 +1072,13 @@ done_testing;
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -1131,13 +1131,13 @@ done_testing;
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -1202,13 +1202,13 @@ done_testing;
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };
@@ -1288,13 +1288,13 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(host => 'localhost', connect_timeout => 2);
+        my $r = Async::Redis->new(host => 'localhost', connect_timeout => 2);
         $loop->await($r->connect);
         $r;
     };

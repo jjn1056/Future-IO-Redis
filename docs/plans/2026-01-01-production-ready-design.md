@@ -1,4 +1,4 @@
-# Future::IO::Redis Production-Ready Design
+# Async::Redis Production-Ready Design
 
 **Date:** 2026-01-01
 **Status:** Approved
@@ -7,7 +7,7 @@
 
 ## Overview
 
-Design for making Future::IO::Redis a production-ready, rock-solid Redis client. Key goals:
+Design for making Async::Redis a production-ready, rock-solid Redis client. Key goals:
 
 1. **Full command coverage** - Auto-generate from Redis specs (Net::Async::Redis style)
 2. **API compatibility** - Match Net::Async::Redis naming conventions
@@ -60,7 +60,7 @@ RESP2 is the legacy Redis protocol supported by all Redis versions. We use Proto
 ### Constructor Options
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     host              => 'localhost',
     port              => 6379,
 
@@ -119,7 +119,7 @@ my $redis = Future::IO::Redis->new(
 ### Auto-Pipelining
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     auto_pipeline => 1,  # enable auto-pipelining
 );
 
@@ -222,7 +222,7 @@ sub _do_flush {
 ### Retry Strategies
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     # Built-in strategies
     retry => 'exponential',     # default: exponential backoff
 
@@ -332,7 +332,7 @@ sub _handle_timeout {
 **Optional "maybe executed" retry policy:**
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     # For users who accept the risk of duplicate execution
     retry_maybe_executed => 1,  # default: 0 (safe)
 );
@@ -344,7 +344,7 @@ When enabled, commands marked as idempotent retry even after write. This is **da
 
 ```perl
 # Mark specific commands as safe to retry even after write
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     idempotent_commands => [qw(GET SET SETNX SETEX GETSET)],
 );
 
@@ -384,17 +384,17 @@ See **Section 2: Timeout Semantics (Precise Definition)** for the full timer-bas
 ### Exception Classes
 
 ```perl
-Future::IO::Redis::Error::Connection   # connect failed, connection lost
-Future::IO::Redis::Error::Timeout      # read/write/connect timeout
-Future::IO::Redis::Error::Protocol     # malformed RESP, unexpected response
-Future::IO::Redis::Error::Redis        # Redis error response (WRONGTYPE, OOM, etc.)
-Future::IO::Redis::Error::Disconnected # command issued while disconnected (queue full)
+Async::Redis::Error::Connection   # connect failed, connection lost
+Async::Redis::Error::Timeout      # read/write/connect timeout
+Async::Redis::Error::Protocol     # malformed RESP, unexpected response
+Async::Redis::Error::Redis        # Redis error response (WRONGTYPE, OOM, etc.)
+Async::Redis::Error::Disconnected # command issued while disconnected (queue full)
 ```
 
 ### Hierarchy
 
 ```
-Future::IO::Redis::Error (base)
+Async::Redis::Error (base)
 ├── ::Connection
 ├── ::Timeout
 ├── ::Protocol
@@ -566,7 +566,7 @@ sub _handle_timeout {
 
     # 1. Fail the timed-out request
     $timed_out_entry->{future}->fail(
-        Future::IO::Redis::Error::Timeout->new(
+        Async::Redis::Error::Timeout->new(
             message => "Request timed out after $self->{request_timeout}s",
             command => $timed_out_entry->{command},
         )
@@ -576,7 +576,7 @@ sub _handle_timeout {
     for my $entry (@{$self->{inflight}}) {
         next if $entry->{future}->is_ready;
         $entry->{future}->fail(
-            Future::IO::Redis::Error::Connection->new(
+            Async::Redis::Error::Connection->new(
                 message => "Connection reset due to timeout",
             )
         );
@@ -603,7 +603,7 @@ In RESP2, if we read data after a timeout, we have no way to know which request 
 | `request_timeout` (per-request) | Authoritative deadline | Each request has its own deadline |
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     read_timeout    => 30,     # Socket-level: "connection seems dead"
     request_timeout => 5,      # Request-level: "this command took too long"
 );
@@ -644,7 +644,7 @@ sub _calculate_deadline {
 
 Example with defaults:
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     request_timeout        => 5,     # Normal commands: 5s deadline
     blocking_timeout_buffer => 2,    # Extra 2s for blocking commands
 );
@@ -693,7 +693,7 @@ sub _execute_pipeline {
 #### Timeout Configuration Summary
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     # Connection establishment
     connect_timeout => 10,          # Max time to establish TCP connection
 
@@ -730,9 +730,9 @@ my $redis = Future::IO::Redis->new(
 ```perl
 $redis->get('key')->on_fail(sub {
     my ($error) = @_;
-    if ($error->isa('Future::IO::Redis::Error::Timeout')) {
+    if ($error->isa('Async::Redis::Error::Timeout')) {
         # handle timeout
-    } elsif ($error->isa('Future::IO::Redis::Error::Redis')) {
+    } elsif ($error->isa('Async::Redis::Error::Redis')) {
         # handle Redis error (WRONGTYPE, etc.)
     }
 });
@@ -754,7 +754,7 @@ try {
 ### Constructor Options
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     host => 'redis.example.com',
     port => 6380,
 
@@ -852,7 +852,7 @@ async sub _tls_upgrade {
     while (1) {
         # Check timeout
         if (time() >= $deadline) {
-            die Future::IO::Redis::Error::Timeout->new(
+            die Async::Redis::Error::Timeout->new(
                 message => "TLS handshake timed out",
             );
         }
@@ -878,7 +878,7 @@ async sub _tls_upgrade {
         }
         else {
             # Actual error
-            die Future::IO::Redis::Error::Connection->new(
+            die Async::Redis::Error::Connection->new(
                 message => "TLS handshake failed: $SSL_ERROR",
             );
         }
@@ -934,7 +934,7 @@ subtest 'TLS handshake does not block event loop' => sub {
     $timer->start;
 
     # Connect to TLS Redis (use remote host, not localhost!)
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host => $ENV{TLS_REDIS_HOST} // 'redis-tls.example.com',
         port => 6380,
         tls => 1,
@@ -1021,7 +1021,7 @@ my $results = await $redis->pipeline
 # $results = ['OK', Error::Redis->new(...), 'value']
 # Pipeline completed; check each slot for errors
 for my $i (0 .. $#$results) {
-    if (ref $results->[$i] && $results->[$i]->isa('Future::IO::Redis::Error')) {
+    if (ref $results->[$i] && $results->[$i]->isa('Async::Redis::Error')) {
         warn "Command $i failed: $results->[$i]";
     }
 }
@@ -1189,7 +1189,7 @@ my $result = await $redis->blpop('high', 'medium', 'low', 10);
 # The Redis timeout (last arg) controls server-side blocking
 # Client adds small buffer to avoid race conditions
 
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     read_timeout => 30,
     blocking_timeout_buffer => 2,  # extra seconds for blocking commands
 );
@@ -1294,8 +1294,8 @@ my $num_receivers = await $redis->publish('channel1', 'hello');
 
 2. **Separate connection recommended** - For apps needing both PubSub and regular commands:
    ```perl
-   my $redis = Future::IO::Redis->new(...);      # commands
-   my $pubsub = Future::IO::Redis->new(...);     # subscriptions
+   my $redis = Async::Redis->new(...);      # commands
+   my $pubsub = Async::Redis->new(...);     # subscriptions
    ```
 
 3. **Reconnect replays subscriptions** - On reconnect, automatically re-subscribes to all active channels/patterns.
@@ -1336,7 +1336,7 @@ my $num = await $redis->spublish('channel1', 'hello');
 ### Constructor
 
 ```perl
-my $pool = Future::IO::Redis::Pool->new(
+my $pool = Async::Redis::Pool->new(
     host     => 'localhost',
     port     => 6379,
 
@@ -1404,7 +1404,7 @@ A connection is **dirty** if any of these are true:
 
 ```perl
 # Each connection tracks its state
-package Future::IO::Redis::Connection;
+package Async::Redis::Connection;
 
 sub is_dirty {
     my ($self) = @_;
@@ -1650,7 +1650,7 @@ await $redis->subscribe('channel');  # Now connection is dirty forever
 $pool->release($redis);  # Will be destroyed
 
 # RIGHT: Dedicated connection for pubsub
-my $subscriber = Future::IO::Redis->new(host => 'localhost');
+my $subscriber = Async::Redis->new(host => 'localhost');
 await $subscriber->connect;
 my $sub = await $subscriber->subscribe('channel');
 # Keep $subscriber alive for duration of subscription
@@ -1734,7 +1734,7 @@ Commands fetched from: https://github.com/redis/redis-doc/blob/master/commands.j
 
 ```perl
 # lib/Future/IO/Redis/Commands.pm (auto-generated)
-package Future::IO::Redis::Commands;
+package Async::Redis::Commands;
 
 use Future::AsyncAwait;
 
@@ -2054,7 +2054,7 @@ The build script generates:
 
 ```perl
 # lib/Future/IO/Redis/KeyExtractor.pm (auto-generated)
-package Future::IO::Redis::KeyExtractor;
+package Async::Redis::KeyExtractor;
 
 use strict;
 use warnings;
@@ -2102,13 +2102,13 @@ sub apply_prefix {
 ### Usage in Command Method
 
 ```perl
-# In Future::IO::Redis
+# In Async::Redis
 sub command {
     my ($self, $cmd, @args) = @_;
 
     # Apply key prefixing if configured
     if ($self->{prefix}) {
-        @args = Future::IO::Redis::KeyExtractor::apply_prefix(
+        @args = Async::Redis::KeyExtractor::apply_prefix(
             $self->{prefix}, $cmd, @args
         );
     }
@@ -2135,7 +2135,7 @@ lib/Future/IO/Redis/
 # t/20-commands/prefix.t
 
 subtest 'simple commands' => sub {
-    my $redis = Future::IO::Redis->new(prefix => 'test:');
+    my $redis = Async::Redis->new(prefix => 'test:');
     # Verify GET key becomes GET test:key
 };
 
@@ -2237,7 +2237,7 @@ use Test2::V0;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 my $loop = IO::Async::Loop->new;
 my @ticks;
@@ -2251,7 +2251,7 @@ $loop->add($timer);
 $timer->start;
 
 # Run Redis operations for 500ms
-my $redis = Future::IO::Redis->new(host => 'localhost');
+my $redis = Async::Redis->new(host => 'localhost');
 my $start = Time::HiRes::time();
 
 my $test = async sub {
@@ -2414,7 +2414,7 @@ $loop->add(IO::Async::Timer::Countdown->new(
 )->start);
 
 # This should timeout after 0.5s, but timer should tick at 0.1s
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     host => '10.255.255.1',  # non-routable, will timeout
     connect_timeout => 0.5,
 );
@@ -2426,7 +2426,7 @@ ok($timer_ticked, 'Event loop not blocked during connect timeout');
 **Request timeout verification:**
 ```perl
 # Verify request timeout resets connection
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     host => 'localhost',
     request_timeout => 0.5,  # 500ms
 );
@@ -2442,8 +2442,8 @@ try { await $f1 } catch ($e) { push @errors, $e }
 try { await $f2 } catch ($e) { push @errors, $e }
 
 is(scalar(@errors), 2, 'Both inflight requests failed');
-ok($errors[0]->isa('Future::IO::Redis::Error::Timeout'), 'First was timeout');
-ok($errors[1]->isa('Future::IO::Redis::Error::Connection'), 'Second was connection reset');
+ok($errors[0]->isa('Async::Redis::Error::Timeout'), 'First was timeout');
+ok($errors[1]->isa('Async::Redis::Error::Connection'), 'Second was connection reset');
 ```
 
 #### Step 4: Reconnection
@@ -2543,7 +2543,7 @@ subtest 'TLS handshake non-blocking' => sub {
     $timer->start;
 
     # Use remote host or add artificial latency
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host => $ENV{TLS_REDIS_HOST},
         tls => 1,
         connect_timeout => 5,
@@ -3091,14 +3091,14 @@ services:
 
 ```perl
 # t/lib/Test/Future/IO/Redis.pm
-package Test::Future::IO::Redis;
+package Test::Async::Redis;
 
 use strict;
 use warnings;
 use Test2::V0;
 use IO::Async::Loop;
 use Future::IO::Impl::IOAsync;
-use Future::IO::Redis;
+use Async::Redis;
 
 our $loop;
 
@@ -3115,7 +3115,7 @@ sub init_loop {
 sub skip_without_redis {
     my $redis = eval {
         # BLOCKING - acceptable only in bootstrap
-        Future::IO::Redis->new(
+        Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
         )->connect->get;
@@ -3127,7 +3127,7 @@ sub skip_without_redis {
 # Async-friendly skip check (preferred)
 # Use when you've already initialized the loop
 sub skip_without_redis_async {
-    my $redis = Future::IO::Redis->new(
+    my $redis = Async::Redis->new(
         host => $ENV{REDIS_HOST} // 'localhost',
         connect_timeout => 2,
     );
@@ -3206,7 +3206,7 @@ sub run_command_async {
 
 ```perl
 # Test file setup
-use Test::Future::IO::Redis qw(init_loop skip_without_redis delay run_command_async);
+use Test::Async::Redis qw(init_loop skip_without_redis delay run_command_async);
 
 my $loop = init_loop();
 my $redis = skip_without_redis();  # Bootstrap - blocking OK here
@@ -3232,7 +3232,7 @@ $loop->await(cleanup_keys_async($redis, 'test:*'));
 # t/91-reliability/redis-restart.t
 
 use Test2::V0;
-use Test::Future::IO::Redis qw(
+use Test::Async::Redis qw(
     init_loop skip_without_redis delay run_command_async
 );
 use Future::AsyncAwait;
@@ -3246,7 +3246,7 @@ $loop->await(async sub {
         my $disconnects = 0;
         my $reconnects = 0;
 
-        my $redis = Future::IO::Redis->new(
+        my $redis = Async::Redis->new(
             host => 'localhost',
             reconnect => 1,
             on_disconnect => sub { $disconnects++ },
@@ -3295,7 +3295,7 @@ my $result = await $redis->get('key');
 # t/92-concurrency/parallel-commands.t
 
 use Test2::V0;
-use Test::Future::IO::Redis;
+use Test::Async::Redis;
 use Future;
 use Time::HiRes qw(time);
 
@@ -3352,7 +3352,7 @@ done_testing;
 # t/93-binary/binary-values.t
 
 use Test2::V0;
-use Test::Future::IO::Redis;
+use Test::Async::Redis;
 
 my $redis = skip_without_redis();
 
@@ -3469,14 +3469,14 @@ jobs:
 # benchmark/throughput.pl
 
 use Benchmark qw(:all);
-use Future::IO::Redis;
+use Async::Redis;
 use Net::Async::Redis;
 use Mojo::Redis;
 
 my $iterations = 10000;
 
 cmpthese($iterations, {
-    'Future::IO::Redis' => sub {
+    'Async::Redis' => sub {
         # our implementation
     },
     'Net::Async::Redis' => sub {
@@ -3516,7 +3516,7 @@ Before release, ALL must pass:
 ```perl
 use OpenTelemetry;
 
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     host => 'localhost',
 
     # Enable tracing
@@ -3556,7 +3556,7 @@ Span: redis.GET
 ### Debug Logging
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     debug => 1,                    # log all commands
     debug => sub {                 # custom logger
         my ($direction, $data) = @_;
@@ -3609,7 +3609,7 @@ sub _format_command_for_log {
 - **Option**: `otel_redact => 0` disables redaction (NOT recommended for production)
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     otel_tracer => $tracer,
 
     # Span db.statement options:
@@ -3651,7 +3651,7 @@ debug => { include_values => 1 }  # NOT recommended
 
 ## Section 14: Binary Data
 
-Redis supports binary-safe strings. Future::IO::Redis handles this correctly:
+Redis supports binary-safe strings. Async::Redis handles this correctly:
 
 ```perl
 # Binary keys and values work
@@ -3684,7 +3684,7 @@ These features are explicitly out of scope for initial release but designed for:
 ### Sentinel Support
 
 ```perl
-my $redis = Future::IO::Redis->new(
+my $redis = Async::Redis->new(
     sentinels => [
         'sentinel1.example.com:26379',
         'sentinel2.example.com:26379',
@@ -3701,7 +3701,7 @@ my $redis = Future::IO::Redis->new(
 ### Cluster Support
 
 ```perl
-my $cluster = Future::IO::Redis::Cluster->new(
+my $cluster = Async::Redis::Cluster->new(
     nodes => ['node1:7000', 'node2:7001', 'node3:7002'],
 );
 

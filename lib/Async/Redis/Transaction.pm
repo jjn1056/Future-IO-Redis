@@ -1,4 +1,4 @@
-package Future::IO::Redis::Transaction;
+package Async::Redis::Transaction;
 
 use strict;
 use warnings;
@@ -51,7 +51,7 @@ __END__
 
 =head1 NAME
 
-Future::IO::Redis::Transaction - Transaction command collector
+Async::Redis::Transaction - Transaction command collector
 
 =head1 DESCRIPTION
 

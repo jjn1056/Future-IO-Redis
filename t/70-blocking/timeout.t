@@ -2,14 +2,14 @@
 use strict;
 use warnings;
 use Test::Lib;
-use Test::Future::IO::Redis ':redis';
+use Test::Async::Redis ':redis';
 use Test2::V0;
-use Future::IO::Redis;
+use Async::Redis;
 use Time::HiRes qw(time);
 
 SKIP: {
     my $redis = eval {
-        my $r = Future::IO::Redis->new(
+        my $r = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             connect_timeout => 2,
             blocking_timeout_buffer => 2,  # 2 second buffer
@@ -37,7 +37,7 @@ SKIP: {
 
     subtest 'blocking_timeout_buffer prevents race condition' => sub {
         # The buffer ensures client doesn't timeout before server response arrives
-        my $redis_short = Future::IO::Redis->new(
+        my $redis_short = Async::Redis->new(
             host => $ENV{REDIS_HOST} // 'localhost',
             blocking_timeout_buffer => 0.5,  # short buffer
         );
