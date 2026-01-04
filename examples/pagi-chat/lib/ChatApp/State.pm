@@ -104,7 +104,7 @@ sub _start_selector_runner {
         gen  => sub { _broadcast_listener() },
     );
 
-    # Run the selector loop in the background (fire-and-forget with retain)
+    # Run the selector loop in the background
     # Using explicit while loop with select() per Future::Selector docs
     (async sub {
         while (1) {
@@ -117,7 +117,7 @@ sub _start_selector_runner {
                 }
             }
         }
-    })->()->retain;
+    })->();
 }
 
 # Add a fire-and-forget background task to the selector
